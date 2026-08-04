@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RODGE Rally Results System v1.7</title>
+    <title>RODGE Rally Results System v1.8</title>
     <style>
         :root {
             --bg-dark: #121212;
@@ -250,7 +250,6 @@
             </div>
         </div>
         
-        <!-- BACKUP / RESTORE CONTROLS -->
         <div class="backup-controls">
             <button class="btn btn-secondary" onclick="exportJSONBackup()">💾 Export JSON Backup</button>
             <button class="btn btn-secondary" onclick="document.getElementById('importFile').click()">📂 Import JSON</button>
@@ -338,7 +337,7 @@
 </div>
 
 <script>
-// --- DEFAULT FALLBACK DATA (Used if entries.json is not in repository) ---
+// --- DEFAULT FALLBACK DATA ---
 const defaultBackupData = {
     eventConfig: {
         eventName: "Welsh Night Rally 2026",
@@ -370,15 +369,13 @@ let eventConfig = {};
 let rallyData = [];
 let modifiedRows = new Set();
 
-// --- STARTUP LOGIC: LOCAL STORAGE -> REPO FETCH -> FALLBACK ---
+// --- STARTUP LOGIC ---
 window.addEventListener('DOMContentLoaded', () => {
     const localSaved = localStorage.getItem('rodge_rally_session');
 
     if (localSaved) {
-        // 1. Resume active session if stored locally
         loadDataset(JSON.parse(localSaved));
     } else {
-        // 2. Fetch entries.json from GitHub repo
         fetchRepoEntries();
     }
 });
@@ -505,7 +502,14 @@ function renderBatchEntryTable() {
         }
 
         if (ctrlConfig.type === 'TC') {
-            const timeVal = val || '';
+            // Default to control's targetTime if time is missing or empty
+            const timeVal = (val !== undefined && val !== '') ? val : (ctrlConfig.targetTime || '');
+            
+            // Auto-populate data model if it was unassigned
+            if (!crew.times[activeCtrlId] && ctrlConfig.targetTime) {
+                crew.times[activeCtrlId] = ctrlConfig.targetTime;
+            }
+
             inputHtml = `
                 <input type="text" class="time-input" value="${timeVal}" 
                     placeholder="HH:MM:SS"
@@ -560,7 +564,7 @@ function handleTimeChange(crewIndex, controlId, inputElem, targetTime) {
     }
 
     if (/^\d{1,2}$/.test(raw)) {
-        let targetHour = targetTime.split(':')[0];
+        let targetHour = targetTime ? targetTime.split(':')[0] : "00";
         let mins = raw.padStart(2, '0');
         raw = `${targetHour}:${mins}:00`;
     } else if (/^\d{1,2}:\d{2}$/.test(raw)) {
