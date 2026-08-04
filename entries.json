@@ -1,6 +1,6 @@
 {
   "eventConfig": {
-    "eventName": "Welsh Night Rally 2026",
+    "eventName": "Welsh Road Rally 2026",
     "controls": [
       { "id": "TC1", "name": "TC1 (Target 22:00)", "type": "TC", "targetTime": "22:00:00", "scrubbed": false },
       { "id": "PC1", "name": "PC1 Route Check", "type": "PC", "scrubbed": false },
@@ -10,6 +10,8 @@
   "rallyData": [
     { "carNo": 1, "driver": "G. Evans", "coDriver": "D. Jones", "class": "Master", "times": {} },
     { "carNo": 2, "driver": "I. Hughes", "coDriver": "R. Thomas", "class": "Expert", "times": {} },
-    { "carNo": 3, "driver": "M. Davies", "coDriver": "A. Williams", "class": "Novice", "times": {} }
+    { "carNo": 3, "driver": "G. Smith", "coDriver": "D. Smith", "class": "Master", "times": {} },
+    { "carNo": 4, "driver": "B. Jones", "coDriver": "R. Evans", "class": "Expert", "times": {} },
+    { "carNo": 5, "driver": "M. Davies", "coDriver": "A. Williams", "class": "Novice", "times": {} }
   ]
 }
