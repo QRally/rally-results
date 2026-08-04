@@ -2,9 +2,11 @@
   "eventConfig": {
     "eventName": "Welsh Road Rally 2026",
     "controls": [
-      { "id": "TC1", "name": "TC1 (Target 22:00)", "type": "TC", "targetTime": "22:00:00", "scrubbed": false },
-      { "id": "PC1", "name": "PC1 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC2", "name": "TC2 (Target 22:10)", "type": "TC", "targetTime": "22:10:00", "scrubbed": false }
+      { id: "TC1", name: "TC1 (Target 22:00)", type: "TC", targetTime: "22:00:00", scrubbed: false },
+            { id: "PC1", name: "PC1 Route Check", type: "PC", scrubbed: false },
+            { id: "TC2", name: "TC2 (Target 22:10)", type: "TC", targetTime: "22:10:00", scrubbed: false },
+            { id: "PC2", name: "PC2 Route Check", type: "PC", scrubbed: false },
+            { id: "TC3", name: "TC3 Petrol Halt (Target 22:25)", type: "TC", targetTime: "22:25:00", scrubbed: false }
     ]
   },
   "rallyData": [
