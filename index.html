@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RODGE Rally Results System v1.8</title>
+    <title>RODGE Rally Results System v1.9</title>
     <style>
         :root {
             --bg-dark: #121212;
@@ -129,6 +129,10 @@
             background-color: var(--edit-highlight);
         }
 
+        tr.row-otl {
+            opacity: 0.75;
+        }
+
         .table-wrapper {
             overflow-x: auto;
             max-width: 100%;
@@ -146,6 +150,15 @@
         .fail-badge {
             color: var(--fail-color);
             font-weight: bold;
+        }
+
+        .otl-badge {
+            background-color: var(--fail-color);
+            color: #fff;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-weight: bold;
+            font-size: 0.85rem;
         }
 
         .scrubbed-badge {
@@ -350,17 +363,18 @@ const defaultBackupData = {
         ]
     },
     rallyData: [
-        { carNo: 1, driver: "G. Evans", coDriver: "D. Jones", class: "Master", times: {} },
-        { carNo: 2, driver: "I. Hughes", coDriver: "R. Thomas", class: "Expert", times: {} },
-        { carNo: 3, driver: "G. Smith", coDriver: "D. Smith", class: "Master", times: {} },
-        { carNo: 4, driver: "B. Jones", coDriver: "R. Evans", class: "Expert", times: {} },
-        { carNo: 5, driver: "M. Davies", coDriver: "A. Williams", class: "Novice", times: {} }
+        { carNo: 1, driver: "G. Evans", coDriver: "D. Jones", class: "Master" },
+        { carNo: 2, driver: "I. Hughes", coDriver: "R. Thomas", class: "Expert" },
+        { carNo: 3, driver: "G. Smith", coDriver: "D. Smith", class: "Master" },
+        { carNo: 4, driver: "B. Jones", coDriver: "R. Evans", class: "Expert" },
+        { carNo: 5, driver: "M. Davies", coDriver: "A. Williams", class: "Novice" }
     ]
 };
 
 let eventConfig = {};
 let rallyData = [];
 let modifiedRows = new Set();
+const OTL_LIMIT_SECONDS = 1800; // 30 minutes threshold
 
 // --- STARTUP LOGIC ---
 window.addEventListener('DOMContentLoaded', () => {
@@ -396,6 +410,11 @@ function loadDataset(packageData) {
     eventConfig = packageData.eventConfig;
     rallyData = packageData.rallyData;
 
+    // Ensure all crews have an initialized times object
+    rallyData.forEach(crew => {
+        if (!crew.times) crew.times = {};
+    });
+
     if (eventConfig.eventName) {
         document.getElementById('appHeaderTitle').textContent = `RODGE Rally Results - ${eventConfig.eventName}`;
     }
@@ -416,7 +435,7 @@ function resetToRepoData() {
     }
 }
 
-// --- TIME & SCORING LOGIC ---
+// --- TIME & SCORING LOGIC WITH OTL CHECK ---
 function timeToSeconds(timeStr) {
     if (!timeStr) return null;
     const parts = timeStr.split(':').map(Number);
@@ -427,6 +446,9 @@ function timeToSeconds(timeStr) {
 function processCrewPenalties(crew) {
     let fails = 0;
     let penaltySeconds = 0;
+    let isOTL = false;
+
+    if (!crew.times) crew.times = {};
 
     eventConfig.controls.forEach(ctrl => {
         if (ctrl.scrubbed) return;
@@ -435,14 +457,20 @@ function processCrewPenalties(crew) {
         if (ctrl.type === "TC") {
             if (val) {
                 let diff = timeToSeconds(val) - timeToSeconds(ctrl.targetTime);
-                if (diff > 0) penaltySeconds += diff;
+                if (diff > 0) {
+                    penaltySeconds += diff;
+                    // Check for Over Target Lateness (30+ minutes at a control)
+                    if (diff >= OTL_LIMIT_SECONDS) {
+                        isOTL = true;
+                    }
+                }
             }
         } else if (ctrl.type === "PC") {
             if (val === false) fails += 1;
         }
     });
 
-    return { fails, penaltySeconds };
+    return { fails, penaltySeconds, isOTL };
 }
 
 // --- BATCH ENTRY & SCRUB LOGIC ---
@@ -483,7 +511,7 @@ function renderBatchEntryTable() {
     let previousTimeSecs = 0;
 
     rallyData.forEach((crew, index) => {
-        const val = crew.times[activeCtrlId];
+        const val = crew.times ? crew.times[activeCtrlId] : undefined;
         const row = document.createElement('tr');
         row.id = `entry-row-${index}`;
 
@@ -495,10 +523,8 @@ function renderBatchEntryTable() {
         }
 
         if (ctrlConfig.type === 'TC') {
-            // Default to control's targetTime if time is missing or empty
             const timeVal = (val !== undefined && val !== '') ? val : (ctrlConfig.targetTime || '');
             
-            // Auto-populate data model if it was unassigned
             if (!crew.times[activeCtrlId] && ctrlConfig.targetTime) {
                 crew.times[activeCtrlId] = ctrlConfig.targetTime;
             }
@@ -512,7 +538,11 @@ function renderBatchEntryTable() {
             
             if (timeVal && !ctrlConfig.scrubbed) {
                 let currentSecs = timeToSeconds(timeVal);
-                if (previousTimeSecs > 0 && currentSecs < previousTimeSecs) {
+                let diff = currentSecs - timeToSeconds(ctrlConfig.targetTime);
+                
+                if (diff >= OTL_LIMIT_SECONDS) {
+                    validationHtml = `<span class="otl-badge">OTL (30m+ Late)</span>`;
+                } else if (previousTimeSecs > 0 && currentSecs < previousTimeSecs) {
                     validationHtml = `<span class="warn-text">⚠️ Arrived earlier than car ahead</span>`;
                 }
                 previousTimeSecs = currentSecs;
@@ -648,15 +678,18 @@ function importJSONBackup(event) {
     reader.readAsText(file);
 }
 
-// --- RECALCULATE & RENDER ---
+// --- RECALCULATE & LEADERBOARD SORTING ---
 function recalculateAll() {
     rallyData.forEach(crew => {
         const scores = processCrewPenalties(crew);
         crew.totalFails = scores.fails;
         crew.totalPenaltySeconds = scores.penaltySeconds;
+        crew.isOTL = scores.isOTL;
     });
 
+    // Primary Sort: Active crews first, then by Fails, then by Lateness. OTL cars dropped to bottom.
     rallyData.sort((a, b) => {
+        if (a.isOTL !== b.isOTL) return a.isOTL ? 1 : -1;
         if (a.totalFails !== b.totalFails) return a.totalFails - b.totalFails;
         return a.totalPenaltySeconds - b.totalPenaltySeconds;
     });
@@ -675,14 +708,20 @@ function renderLeaderboard() {
         const seconds = crew.totalPenaltySeconds % 60;
 
         const row = document.createElement('tr');
+        if (crew.isOTL) row.classList.add('row-otl');
+
+        const statusHtml = crew.isOTL 
+            ? `<span class="otl-badge">OTL (Retired)</span>` 
+            : `<span style="color:var(--success-color); font-weight:bold;">Active</span>`;
+
         row.innerHTML = `
-            <td class="pos-${pos + 1}">${pos + 1}</td>
+            <td class="${!crew.isOTL ? 'pos-' + (pos + 1) : ''}">${crew.isOTL ? 'OTL' : (pos + 1)}</td>
             <td><strong>#${crew.carNo}</strong></td>
             <td>${crew.driver} / ${crew.coDriver}</td>
             <td>${crew.class}</td>
             <td>${crew.totalFails > 0 ? `<span class="fail-badge">${crew.totalFails} Fail(s)</span>` : '0'}</td>
             <td>${minutes}m ${seconds}s</td>
-            <td>Active</td>
+            <td>${statusHtml}</td>
         `;
         tbody.appendChild(row);
     });
@@ -698,16 +737,16 @@ function renderMasterMatrix() {
     eventConfig.controls.forEach(ctrl => {
         headerRow += `<th>${ctrl.id}${ctrl.scrubbed ? ' (SCRUB)' : ''}</th>`;
     });
-    headerRow += `<th>Total Fails</th><th>Total Time</th></tr>`;
+    headerRow += `<th>Total Fails</th><th>Total Time</th><th>Status</th></tr>`;
 
     let bodyRows = '';
     rallyData.forEach(crew => {
         const minutes = Math.floor(crew.totalPenaltySeconds / 60);
         const seconds = crew.totalPenaltySeconds % 60;
 
-        let row = `<tr><td class="sticky-col"><strong>#${crew.carNo}</strong> - ${crew.driver}</td>`;
+        let row = `<tr class="${crew.isOTL ? 'row-otl' : ''}"><td class="sticky-col"><strong>#${crew.carNo}</strong> - ${crew.driver}</td>`;
         eventConfig.controls.forEach(ctrl => {
-            const val = crew.times[ctrl.id];
+            const val = crew.times ? crew.times[ctrl.id] : undefined;
             if (ctrl.scrubbed) {
                 row += `<td><span class="scrubbed-badge">SCRUB</span></td>`;
             } else if (ctrl.type === 'TC') {
@@ -716,7 +755,10 @@ function renderMasterMatrix() {
                 row += `<td>${val === false ? '<span class="fail-badge">FAIL</span>' : 'OK'}</td>`;
             }
         });
-        row += `<td><strong>${crew.totalFails}</strong></td><td>${minutes}m ${seconds}s</td></tr>`;
+        
+        const statusText = crew.isOTL ? `<span class="otl-badge">OTL</span>` : `OK`;
+
+        row += `<td><strong>${crew.totalFails}</strong></td><td>${minutes}m ${seconds}s</td><td>${statusText}</td></tr>`;
         bodyRows += row;
     });
 
