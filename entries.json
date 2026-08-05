@@ -10,10 +10,10 @@
     ]
   },
   "rallyData": [
-    { "carNo": 1, "driver": "G. Evans", "coDriver": "D. Jones", "class": "Master", "times": {} },
-    { "carNo": 2, "driver": "I. Hughes", "coDriver": "R. Thomas", "class": "Expert", "times": {} },
-    { "carNo": 3, "driver": "G. Smith", "coDriver": "D. Smith", "class": "Master", "times": {} },
-    { "carNo": 4, "driver": "B. Jones", "coDriver": "R. Evans", "class": "Expert", "times": {} },
-    { "carNo": 5, "driver": "M. Davies", "coDriver": "A. Williams", "class": "Novice", "times": {} }
+    { "carNo": 1, "driver": "G. Evans", "coDriver": "D. Jones", "class": "Master" },
+    { "carNo": 2, "driver": "I. Hughes", "coDriver": "R. Thomas", "class": "Expert" },
+    { "carNo": 3, "driver": "G. Smith", "coDriver": "D. Smith", "class": "Master" },
+    { "carNo": 4, "driver": "B. Jones", "coDriver": "R. Evans", "class": "Expert" },
+    { "carNo": 5, "driver": "M. Davies", "coDriver": "A. Williams", "class": "Novice" }
   ]
 }
