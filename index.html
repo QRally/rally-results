@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RODGE Rally Results System v1.9</title>
+    <title>RODGE Rally Results System v2.0</title>
     <style>
         :root {
             --bg-dark: #121212;
@@ -32,7 +32,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1300px;
             margin: 0 auto;
             display: flex;
             flex-direction: column;
@@ -91,18 +91,18 @@
             font-size: 1rem;
         }
 
-        .time-input {
+        .time-input, .penalty-input {
             background: #121212;
             border: 1px solid #444;
             color: #fff;
             padding: 6px 10px;
             border-radius: 4px;
             font-size: 1rem;
-            width: 110px;
+            width: 100px;
             font-family: monospace;
         }
 
-        .time-input:focus {
+        .time-input:focus, .penalty-input:focus {
             border-color: var(--accent);
             outline: none;
             background: #1a1a1a;
@@ -301,10 +301,12 @@
         <table>
             <thead>
                 <tr>
-                    <th style="width: 80px;">Car #</th>
+                    <th style="width: 70px;">Car #</th>
                     <th>Crew</th>
                     <th>Class</th>
                     <th>Recorded Entry</th>
+                    <th style="width: 140px;">Extra Penalty (MM:SS)</th>
+                    <th style="width: 150px;">Approach/Rule (+1 Fail)</th>
                     <th>Validation / Status</th>
                 </tr>
             </thead>
@@ -410,7 +412,6 @@ function loadDataset(packageData) {
     eventConfig = packageData.eventConfig;
     rallyData = packageData.rallyData;
 
-    // Ensure all crews have an initialized times object
     rallyData.forEach(crew => {
         if (!crew.times) crew.times = {};
     });
@@ -435,7 +436,7 @@ function resetToRepoData() {
     }
 }
 
-// --- TIME & SCORING LOGIC WITH OTL CHECK ---
+// --- HELPER CONVERSIONS ---
 function timeToSeconds(timeStr) {
     if (!timeStr) return null;
     const parts = timeStr.split(':').map(Number);
@@ -443,6 +444,38 @@ function timeToSeconds(timeStr) {
     return parts[0] * 3600 + parts[1] * 60 + (parts[2] || 0);
 }
 
+function mmssToSeconds(mmssStr) {
+    if (!mmssStr) return 0;
+    const parts = mmssStr.split(':').map(Number);
+    if (parts.length === 1) return (parts[0] || 0) * 60;
+    return (parts[0] || 0) * 60 + (parts[1] || 0);
+}
+
+function secondsToMMSS(totalSecs) {
+    if (!totalSecs || totalSecs <= 0) return "00:00";
+    const mins = Math.floor(totalSecs / 60);
+    const secs = totalSecs % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+function getControlRecord(crew, controlId) {
+    let rec = crew.times ? crew.times[controlId] : undefined;
+    if (rec === undefined) return { time: "", extraSecs: 0, manualFail: false, visited: true };
+    if (typeof rec === 'object' && rec !== null) {
+        return {
+            time: rec.time || "",
+            extraSecs: rec.extraSecs || 0,
+            manualFail: rec.manualFail || false,
+            visited: rec.visited !== undefined ? rec.visited : true
+        };
+    }
+    if (typeof rec === 'boolean') {
+        return { time: "", extraSecs: 0, manualFail: false, visited: rec };
+    }
+    return { time: rec || "", extraSecs: 0, manualFail: false, visited: true };
+}
+
+// --- TIME & SCORING LOGIC WITH OTL AND MANUAL PENALTIES ---
 function processCrewPenalties(crew) {
     let fails = 0;
     let penaltySeconds = 0;
@@ -453,20 +486,24 @@ function processCrewPenalties(crew) {
     eventConfig.controls.forEach(ctrl => {
         if (ctrl.scrubbed) return;
 
-        const val = crew.times[ctrl.id];
+        const rec = getControlRecord(crew, ctrl.id);
+
+        if (rec.manualFail) fails += 1;
+
         if (ctrl.type === "TC") {
-            if (val) {
-                let diff = timeToSeconds(val) - timeToSeconds(ctrl.targetTime);
+            if (rec.time) {
+                let diff = timeToSeconds(rec.time) - timeToSeconds(ctrl.targetTime);
                 if (diff > 0) {
                     penaltySeconds += diff;
-                    // Check for Over Target Lateness (30+ minutes at a control)
                     if (diff >= OTL_LIMIT_SECONDS) {
                         isOTL = true;
                     }
                 }
             }
+            penaltySeconds += rec.extraSecs;
+
         } else if (ctrl.type === "PC") {
-            if (val === false) fails += 1;
+            if (rec.visited === false) fails += 1;
         }
     });
 
@@ -511,11 +548,13 @@ function renderBatchEntryTable() {
     let previousTimeSecs = 0;
 
     rallyData.forEach((crew, index) => {
-        const val = crew.times ? crew.times[activeCtrlId] : undefined;
+        const rec = getControlRecord(crew, activeCtrlId);
         const row = document.createElement('tr');
         row.id = `entry-row-${index}`;
 
         let inputHtml = '';
+        let extraPenaltyHtml = '-';
+        let manualFailHtml = '-';
         let validationHtml = '<span style="color:var(--success-color)">OK</span>';
 
         if (ctrlConfig.scrubbed) {
@@ -523,10 +562,10 @@ function renderBatchEntryTable() {
         }
 
         if (ctrlConfig.type === 'TC') {
-            const timeVal = (val !== undefined && val !== '') ? val : (ctrlConfig.targetTime || '');
+            const timeVal = (rec.time !== undefined && rec.time !== '') ? rec.time : (ctrlConfig.targetTime || '');
             
-            if (!crew.times[activeCtrlId] && ctrlConfig.targetTime) {
-                crew.times[activeCtrlId] = ctrlConfig.targetTime;
+            if (!crew.times[activeCtrlId]) {
+                crew.times[activeCtrlId] = { time: ctrlConfig.targetTime || '', extraSecs: 0, manualFail: false };
             }
 
             inputHtml = `
@@ -535,7 +574,18 @@ function renderBatchEntryTable() {
                     onchange="handleTimeChange(${index}, '${activeCtrlId}', this, '${ctrlConfig.targetTime}')"
                     onkeydown="handleKeyDown(event, ${index})">
             `;
-            
+
+            extraPenaltyHtml = `
+                <input type="text" class="penalty-input" value="${secondsToMMSS(rec.extraSecs)}"
+                    placeholder="MM:SS"
+                    onchange="handleExtraPenaltyChange(${index}, '${activeCtrlId}', this)">
+            `;
+
+            manualFailHtml = `
+                <input type="checkbox" ${rec.manualFail ? 'checked' : ''}
+                    onchange="handleManualFailChange(${index}, '${activeCtrlId}', this.checked)"> +1 Fail
+            `;
+
             if (timeVal && !ctrlConfig.scrubbed) {
                 let currentSecs = timeToSeconds(timeVal);
                 let diff = currentSecs - timeToSeconds(ctrlConfig.targetTime);
@@ -548,7 +598,7 @@ function renderBatchEntryTable() {
                 previousTimeSecs = currentSecs;
             }
         } else {
-            const isChecked = val !== false;
+            const isChecked = rec.visited !== false;
             inputHtml = `
                 <input type="checkbox" ${isChecked ? 'checked' : ''} 
                     onchange="handleCheckboxChange(${index}, '${activeCtrlId}', this.checked)"> Visited
@@ -563,6 +613,8 @@ function renderBatchEntryTable() {
             <td>${crew.driver} / ${crew.coDriver}</td>
             <td>${crew.class}</td>
             <td>${inputHtml}</td>
+            <td>${extraPenaltyHtml}</td>
+            <td>${manualFailHtml}</td>
             <td id="status-cell-${index}">${validationHtml}</td>
         `;
         tbody.appendChild(row);
@@ -580,27 +632,44 @@ function toggleControlScrub() {
 
 function handleTimeChange(crewIndex, controlId, inputElem, targetTime) {
     let raw = inputElem.value.trim();
-    if (!raw) {
-        rallyData[crewIndex].times[controlId] = "";
-        markRowModified(crewIndex);
-        return;
-    }
+    let rec = getControlRecord(rallyData[crewIndex], controlId);
 
-    if (/^\d{1,2}$/.test(raw)) {
+    if (raw && /^\d{1,2}$/.test(raw)) {
         let targetHour = targetTime ? targetTime.split(':')[0] : "00";
         let mins = raw.padStart(2, '0');
         raw = `${targetHour}:${mins}:00`;
-    } else if (/^\d{1,2}:\d{2}$/.test(raw)) {
+    } else if (raw && /^\d{1,2}:\d{2}$/.test(raw)) {
         raw = `${raw}:00`;
     }
 
     inputElem.value = raw;
-    rallyData[crewIndex].times[controlId] = raw;
+    rec.time = raw;
+    rallyData[crewIndex].times[controlId] = rec;
+    markRowModified(crewIndex);
+}
+
+function handleExtraPenaltyChange(crewIndex, controlId, inputElem) {
+    let raw = inputElem.value.trim();
+    let seconds = mmssToSeconds(raw);
+    inputElem.value = secondsToMMSS(seconds);
+
+    let rec = getControlRecord(rallyData[crewIndex], controlId);
+    rec.extraSecs = seconds;
+    rallyData[crewIndex].times[controlId] = rec;
+    markRowModified(crewIndex);
+}
+
+function handleManualFailChange(crewIndex, controlId, isChecked) {
+    let rec = getControlRecord(rallyData[crewIndex], controlId);
+    rec.manualFail = isChecked;
+    rallyData[crewIndex].times[controlId] = rec;
     markRowModified(crewIndex);
 }
 
 function handleCheckboxChange(crewIndex, controlId, isChecked) {
-    rallyData[crewIndex].times[controlId] = isChecked;
+    let rec = getControlRecord(rallyData[crewIndex], controlId);
+    rec.visited = isChecked;
+    rallyData[crewIndex].times[controlId] = rec;
     markRowModified(crewIndex);
 }
 
@@ -687,7 +756,6 @@ function recalculateAll() {
         crew.isOTL = scores.isOTL;
     });
 
-    // Primary Sort: Active crews first, then by Fails, then by Lateness. OTL cars dropped to bottom.
     rallyData.sort((a, b) => {
         if (a.isOTL !== b.isOTL) return a.isOTL ? 1 : -1;
         if (a.totalFails !== b.totalFails) return a.totalFails - b.totalFails;
@@ -746,13 +814,18 @@ function renderMasterMatrix() {
 
         let row = `<tr class="${crew.isOTL ? 'row-otl' : ''}"><td class="sticky-col"><strong>#${crew.carNo}</strong> - ${crew.driver}</td>`;
         eventConfig.controls.forEach(ctrl => {
-            const val = crew.times ? crew.times[ctrl.id] : undefined;
+            const rec = getControlRecord(crew, ctrl.id);
             if (ctrl.scrubbed) {
                 row += `<td><span class="scrubbed-badge">SCRUB</span></td>`;
             } else if (ctrl.type === 'TC') {
-                row += `<td>${val || '-'}</td>`;
+                let cellTxt = rec.time || '-';
+                let tags = [];
+                if (rec.extraSecs > 0) tags.push(`+${secondsToMMSS(rec.extraSecs)}`);
+                if (rec.manualFail) tags.push(`FAIL`);
+                if (tags.length > 0) cellTxt += ` <small>(${tags.join(', ')})</small>`;
+                row += `<td>${cellTxt}</td>`;
             } else {
-                row += `<td>${val === false ? '<span class="fail-badge">FAIL</span>' : 'OK'}</td>`;
+                row += `<td>${rec.visited === false ? '<span class="fail-badge">FAIL</span>' : 'OK'}</td>`;
             }
         });
         
