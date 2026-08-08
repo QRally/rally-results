@@ -513,7 +513,6 @@ function processCrewPenalties(crew) {
                     let baseTargetSecs = timeToSeconds(ctrl.targetTime);
                     
                     if (recSecs !== null && baseTargetSecs !== null) {
-                        // Offset base control target time by competitor car number (1 minute per car number)
                         let carOffsetSecs = (parseInt(crew.carNo) || 0) * 60;
                         let dueTargetSecs = baseTargetSecs + carOffsetSecs;
 
@@ -608,21 +607,17 @@ function renderBatchEntryTable() {
         const isVisible = (filterVal === "" || crew.carNo.toString() === filterVal);
         if (!isVisible) row.style.display = "none";
 
-        // Car No
         const tdCar = document.createElement('td');
         const carStrong = document.createElement('strong');
         carStrong.textContent = `#${crew.carNo}`;
         tdCar.appendChild(carStrong);
 
-        // Crew
         const tdCrew = document.createElement('td');
         tdCrew.textContent = `${crew.driver} / ${crew.coDriver}`;
 
-        // Class
         const tdClass = document.createElement('td');
         tdClass.textContent = crew.class;
 
-        // Entry Input Box
         const tdEntry = document.createElement('td');
         const tdExtra = document.createElement('td');
         const tdManual = document.createElement('td');
@@ -650,7 +645,6 @@ function renderBatchEntryTable() {
 
             tdEntry.appendChild(timeInput);
 
-            // Extra penalty
             const extraInput = document.createElement('input');
             extraInput.type = 'text';
             extraInput.className = 'penalty-input';
@@ -662,7 +656,6 @@ function renderBatchEntryTable() {
 
             tdExtra.appendChild(extraInput);
 
-            // Manual Fail (+1)
             const failChk = document.createElement('input');
             failChk.type = 'checkbox';
             failChk.checked = rec.manualFail;
@@ -904,12 +897,31 @@ function renderLeaderboard() {
         return;
     }
 
+    // 1. Identify the 1st placed active car for each class
+    const classLeaders = {};
+    rallyData.forEach(crew => {
+        if (!crew.isOTL && !classLeaders[crew.class]) {
+            classLeaders[crew.class] = crew.carNo;
+        }
+    });
+
+    // 2. Render Leaderboard Rows with Class Leader Highlighting
     rallyData.forEach((crew, pos) => {
         const minutes = Math.floor(crew.totalPenaltySeconds / 60);
         const seconds = crew.totalPenaltySeconds % 60;
 
         const row = document.createElement('tr');
         if (crew.isOTL) row.classList.add('row-otl');
+
+        const isClassLeader = classLeaders[crew.class] === crew.carNo;
+
+        if (isClassLeader && !crew.isOTL) {
+            row.style.borderLeft = "4px solid var(--accent)";
+        }
+
+        const classBadgeHtml = isClassLeader && !crew.isOTL
+            ? ` <span style="background:var(--accent); color:#000; padding:2px 6px; border-radius:3px; font-size:0.75rem; font-weight:bold; margin-left:6px;">1st ${crew.class}</span>` 
+            : '';
 
         const statusHtml = crew.isOTL 
             ? `<span class="otl-badge">OTL (Retired)</span>` 
@@ -919,7 +931,7 @@ function renderLeaderboard() {
             <td class="${!crew.isOTL ? 'pos-' + (pos + 1) : ''}">${crew.isOTL ? 'OTL' : (pos + 1)}</td>
             <td><strong>#${crew.carNo}</strong></td>
             <td>${crew.driver} / ${crew.coDriver}</td>
-            <td>${crew.class}</td>
+            <td>${crew.class}${classBadgeHtml}</td>
             <td>${crew.totalFails > 0 ? `<span class="fail-badge">${crew.totalFails} Fail(s)</span>` : '0'}</td>
             <td>${minutes}m ${seconds}s</td>
             <td>${statusHtml}</td>
