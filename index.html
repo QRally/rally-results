@@ -1,9 +1,9 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RODGE Rally Results v2.0</title>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>RODGE Rally Results System v2.1 (patched)</title>
     <style>
         :root {
             --bg-dark: #121212;
@@ -106,6 +106,11 @@
             border-color: var(--accent);
             outline: none;
             background: #1a1a1a;
+        }
+
+        .invalid-input {
+            border-color: var(--fail-color) !important;
+            background: #2c1212 !important;
         }
 
         table {
@@ -255,7 +260,7 @@
 <div class="container">
     <div class="card header-bar">
         <div>
-            <h1 id="appHeaderTitle">RODGE Rally Results</h1>
+            <h1 id="appHeaderTitle">RODGE Rally Results Engine</h1>
             <div class="tab-buttons">
                 <button class="tab-btn active" onclick="switchTab('batchEntry', event)">1. Batch Data Entry</button>
                 <button class="tab-btn" onclick="switchTab('leaderboard', event)">2. Live Leaderboard</button>
@@ -352,12 +357,8 @@
 </div>
 
 <script>
-// --- CLEAN EMPTY FALLBACK CONTAINER ---
 const defaultBackupData = {
-    eventConfig: {
-        eventName: "Rally Event",
-        controls: []
-    },
+    eventConfig: { eventName: "Rally Event", controls: [] },
     rallyData: []
 };
 
@@ -425,18 +426,36 @@ function resetToRepoData() {
 }
 
 // --- HELPER CONVERSIONS ---
+// Robust time parser:
+// - "HH:MM:SS" => hours/minutes/seconds
+// - "MM:SS" => minutes/seconds
+// - "N" => minutes (single number treated as minutes for UX)
 function timeToSeconds(timeStr) {
     if (!timeStr) return null;
-    const parts = timeStr.split(':').map(Number);
-    if (parts.length < 2) return null;
-    return parts[0] * 3600 + parts[1] * 60 + (parts[2] || 0);
+    const s = ('' + timeStr).trim();
+    const parts = s.split(':').map(x => Number(x));
+    if (parts.some(isNaN)) return null;
+    if (parts.length === 3) {
+        return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+    }
+    if (parts.length === 2) { // MM:SS
+        return (parts[0] || 0) * 60 + (parts[1] || 0);
+    }
+    if (parts.length === 1) { // single number -> minutes
+        return (parts[0] || 0) * 60;
+    }
+    return null;
 }
 
+// mmssToSeconds: parse "MM:SS" or single number -> minutes
 function mmssToSeconds(mmssStr) {
     if (!mmssStr) return 0;
-    const parts = mmssStr.split(':').map(Number);
-    if (parts.length === 1) return (parts[0] || 0) * 60;
-    return (parts[0] || 0) * 60 + (parts[1] || 0);
+    const s = ('' + mmssStr).trim();
+    const parts = s.split(':').map(x => Number(x));
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 2) return (parts[0] || 0) * 60 + (parts[1] || 0);
+    // single number treated as minutes for UX consistency
+    return (parts[0] || 0) * 60;
 }
 
 function secondsToMMSS(totalSecs) {
@@ -463,7 +482,7 @@ function getControlRecord(crew, controlId) {
     return { time: rec || "", extraSecs: 0, manualFail: false, visited: true };
 }
 
-// --- TIME & SCORING LOGIC WITH OTL AND MANUAL PENALTIES ---
+// --- SCORING LOGIC ---
 function processCrewPenalties(crew) {
     let fails = 0;
     let penaltySeconds = 0;
@@ -481,16 +500,19 @@ function processCrewPenalties(crew) {
 
             if (ctrl.type === "TC") {
                 if (rec.time) {
-                    let diff = timeToSeconds(rec.time) - timeToSeconds(ctrl.targetTime);
-                    if (diff > 0) {
-                        penaltySeconds += diff;
-                        if (diff >= OTL_LIMIT_SECONDS) {
-                            isOTL = true;
+                    let recSecs = timeToSeconds(rec.time);
+                    let targetSecs = timeToSeconds(ctrl.targetTime);
+                    if (recSecs !== null && targetSecs !== null) {
+                        let diff = recSecs - targetSecs;
+                        if (diff > 0) {
+                            penaltySeconds += diff;
+                            if (diff >= OTL_LIMIT_SECONDS) {
+                                isOTL = true;
+                            }
                         }
                     }
                 }
                 penaltySeconds += rec.extraSecs;
-
             } else if (ctrl.type === "PC") {
                 if (rec.visited === false) fails += 1;
             }
@@ -500,11 +522,11 @@ function processCrewPenalties(crew) {
     return { fails, penaltySeconds, isOTL };
 }
 
-// --- BATCH ENTRY & SCRUB LOGIC ---
+// --- BATCH ENTRY ---
 function initControlSelector() {
     const select = document.getElementById('controlSelect');
     select.innerHTML = '';
-    
+
     if (!eventConfig.controls || eventConfig.controls.length === 0) {
         const opt = document.createElement('option');
         opt.value = '';
@@ -534,11 +556,22 @@ function renderBatchEntryTable() {
 
     if (!activeCtrlId) {
         scrubWarning.style.display = "none";
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">Load an entries.json file to view controls and competitor lists.</td></tr>`;
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.style.textAlign = "center";
+        td.textContent = "Load an entries.json file to view controls and competitor lists.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
 
     const ctrlConfig = eventConfig.controls.find(c => c.id === activeCtrlId);
+
+    if (!ctrlConfig) {
+        scrubWarning.style.display = "none";
+        return;
+    }
 
     if (ctrlConfig.scrubbed) {
         scrubWarning.style.display = "flex";
@@ -551,77 +584,124 @@ function renderBatchEntryTable() {
     }
 
     let previousTimeSecs = 0;
+    const filterVal = document.getElementById('carFilter').value.trim();
 
     rallyData.forEach((crew, index) => {
         const rec = getControlRecord(crew, activeCtrlId);
         const row = document.createElement('tr');
         row.id = `entry-row-${index}`;
 
-        let inputHtml = '';
-        let extraPenaltyHtml = '-';
-        let manualFailHtml = '-';
-        let validationHtml = '<span style="color:var(--success-color)">OK</span>';
+        const isVisible = (filterVal === "" || crew.carNo.toString() === filterVal);
+        if (!isVisible) row.style.display = "none";
+
+        // Columns
+        const tdCar = document.createElement('td');
+        const carStrong = document.createElement('strong');
+        carStrong.textContent = `#${crew.carNo}`;
+        tdCar.appendChild(carStrong);
+
+        const tdCrew = document.createElement('td');
+        tdCrew.textContent = `${crew.driver} / ${crew.coDriver}`;
+
+        const tdClass = document.createElement('td');
+        tdClass.textContent = crew.class;
+
+        const tdEntry = document.createElement('td');
+
+        const tdExtra = document.createElement('td');
+        const tdManual = document.createElement('td');
+        const tdStatus = document.createElement('td');
+        tdStatus.id = `status-cell-${index}`;
+        tdStatus.innerHTML = `<span style="color:var(--success-color)">OK</span>`;
 
         if (ctrlConfig.scrubbed) {
-            validationHtml = `<span class="scrubbed-badge">SCRUBBED</span>`;
+            tdStatus.innerHTML = `<span class="scrubbed-badge">SCRUBBED</span>`;
         }
 
         if (ctrlConfig.type === 'TC') {
             const timeVal = (rec.time !== undefined && rec.time !== '') ? rec.time : (ctrlConfig.targetTime || '');
-            
-            if (!crew.times[activeCtrlId]) {
-                crew.times[activeCtrlId] = { time: ctrlConfig.targetTime || '', extraSecs: 0, manualFail: false };
-            }
+            // Input for time (DOM-based, no inline handlers)
+            const timeInput = document.createElement('input');
+            timeInput.type = 'text';
+            timeInput.className = 'time-input';
+            timeInput.value = timeVal;
+            timeInput.placeholder = "HH:MM:SS";
+            timeInput.dataset.crewIndex = index;
+            timeInput.dataset.controlId = activeCtrlId;
+            timeInput.dataset.targetTime = ctrlConfig.targetTime || '';
+            timeInput.addEventListener('change', handleTimeChange);
+            timeInput.addEventListener('keydown', handleKeyDown);
 
-            inputHtml = `
-                <input type="text" class="time-input" value="${timeVal}" 
-                    placeholder="HH:MM:SS"
-                    onchange="handleTimeChange(${index}, '${activeCtrlId}', this, '${ctrlConfig.targetTime}')"
-                    onkeydown="handleKeyDown(event, ${index})">
-            `;
+            tdEntry.appendChild(timeInput);
 
-            extraPenaltyHtml = `
-                <input type="text" class="penalty-input" value="${secondsToMMSS(rec.extraSecs)}"
-                    placeholder="MM:SS"
-                    onchange="handleExtraPenaltyChange(${index}, '${activeCtrlId}', this)">
-            `;
+            // Extra penalty input
+            const extraInput = document.createElement('input');
+            extraInput.type = 'text';
+            extraInput.className = 'penalty-input';
+            extraInput.value = secondsToMMSS(rec.extraSecs);
+            extraInput.placeholder = "MM:SS";
+            extraInput.dataset.crewIndex = index;
+            extraInput.dataset.controlId = activeCtrlId;
+            extraInput.addEventListener('change', handleExtraPenaltyChange);
+            tdExtra.appendChild(extraInput);
 
-            manualFailHtml = `
-                <input type="checkbox" ${rec.manualFail ? 'checked' : ''}
-                    onchange="handleManualFailChange(${index}, '${activeCtrlId}', this.checked)"> +1 Fail
-            `;
+            // Manual fail checkbox
+            const manualChk = document.createElement('input');
+            manualChk.type = 'checkbox';
+            manualChk.checked = !!rec.manualFail;
+            manualChk.dataset.crewIndex = index;
+            manualChk.dataset.controlId = activeCtrlId;
+            manualChk.addEventListener('change', (ev) => {
+                handleManualFailChange(Number(ev.target.dataset.crewIndex), ev.target.dataset.controlId, ev.target.checked);
+            });
+            tdManual.appendChild(manualChk);
+            const mfLabel = document.createTextNode(' +1 Fail');
+            tdManual.appendChild(mfLabel);
 
+            // Validation / status logic (OTL / earlier-than-previous)
             if (timeVal && !ctrlConfig.scrubbed) {
                 let currentSecs = timeToSeconds(timeVal);
-                let diff = currentSecs - timeToSeconds(ctrlConfig.targetTime);
-                
-                if (diff >= OTL_LIMIT_SECONDS) {
-                    validationHtml = `<span class="otl-badge">OTL (30m+ Late)</span>`;
-                } else if (previousTimeSecs > 0 && currentSecs < previousTimeSecs) {
-                    validationHtml = `<span class="warn-text">⚠️ Arrived earlier than car ahead</span>`;
+                let targetSecs = timeToSeconds(ctrlConfig.targetTime);
+
+                if (currentSecs !== null && targetSecs !== null) {
+                    let diff = currentSecs - targetSecs;
+
+                    if (diff >= OTL_LIMIT_SECONDS) {
+                        tdStatus.innerHTML = `<span class="otl-badge">OTL (30m+ Late)</span>`;
+                    } else if (isVisible && previousTimeSecs > 0 && currentSecs < previousTimeSecs) {
+                        tdStatus.innerHTML = `<span class="warn-text">⚠️ Arrived earlier than car ahead</span>`;
+                    }
+
+                    if (isVisible) previousTimeSecs = currentSecs;
                 }
-                previousTimeSecs = currentSecs;
             }
-        } else {
-            const isChecked = rec.visited !== false;
-            inputHtml = `
-                <input type="checkbox" ${isChecked ? 'checked' : ''} 
-                    onchange="handleCheckboxChange(${index}, '${activeCtrlId}', this.checked)"> Visited
-            `;
-            if (!isChecked && !ctrlConfig.scrubbed) {
-                validationHtml = `<span class="fail-badge">1 FAIL APPLIED</span>`;
+
+        } else { // PC
+            const chk = document.createElement('input');
+            chk.type = 'checkbox';
+            chk.checked = rec.visited !== false;
+            chk.dataset.crewIndex = index;
+            chk.dataset.controlId = activeCtrlId;
+            chk.addEventListener('change', (ev) => {
+                handleCheckboxChange(Number(ev.target.dataset.crewIndex), ev.target.dataset.controlId, ev.target.checked);
+            });
+            tdEntry.appendChild(chk);
+            const txt = document.createTextNode(' Visited');
+            tdEntry.appendChild(txt);
+
+            if (!chk.checked && !ctrlConfig.scrubbed) {
+                tdStatus.innerHTML = `<span class="fail-badge">1 FAIL APPLIED</span>`;
             }
         }
 
-        row.innerHTML = `
-            <td><strong>#${crew.carNo}</strong></td>
-            <td>${crew.driver} / ${crew.coDriver}</td>
-            <td>${crew.class}</td>
-            <td>${inputHtml}</td>
-            <td>${extraPenaltyHtml}</td>
-            <td>${manualFailHtml}</td>
-            <td id="status-cell-${index}">${validationHtml}</td>
-        `;
+        row.appendChild(tdCar);
+        row.appendChild(tdCrew);
+        row.appendChild(tdClass);
+        row.appendChild(tdEntry);
+        row.appendChild(tdExtra);
+        row.appendChild(tdManual);
+        row.appendChild(tdStatus);
+
         tbody.appendChild(row);
     });
 }
@@ -630,51 +710,84 @@ function toggleControlScrub() {
     const activeCtrlId = document.getElementById('controlSelect').value;
     if (!activeCtrlId) return;
     const ctrlConfig = eventConfig.controls.find(c => c.id === activeCtrlId);
-    
+    if (!ctrlConfig) return;
+
     ctrlConfig.scrubbed = !ctrlConfig.scrubbed;
     initControlSelector();
     recalculateAll();
 }
 
-function handleTimeChange(crewIndex, controlId, inputElem, targetTime) {
-    let raw = inputElem.value.trim();
-    let rec = getControlRecord(rallyData[crewIndex], controlId);
+// --- INPUT HANDLERS (DOM-based) ---
+// These handlers read dataset on the input element and update rallyData only when user edits.
 
-    if (raw && /^\d{1,2}$/.test(raw)) {
-        let targetHour = targetTime ? targetTime.split(':')[0] : "00";
-        let mins = raw.padStart(2, '0');
-        raw = `${targetHour}:${mins}:00`;
-    } else if (raw && /^\d{1,2}:\d{2}$/.test(raw)) {
-        raw = `${raw}:00`;
+function handleTimeChange(ev) {
+    const inputElem = ev.target;
+    let raw = (inputElem.value || '').trim();
+    const crewIndex = Number(inputElem.dataset.crewIndex);
+    const controlId = inputElem.dataset.controlId;
+    const targetTime = inputElem.dataset.targetTime || "00:00:00";
+
+    inputElem.classList.remove('invalid-input');
+
+    // Normalize target hour
+    const targetHour = (typeof targetTime === 'string' && targetTime.includes(':')) ? targetTime.split(':')[0].padStart(2, '0') : '00';
+
+    if (raw) {
+        if (/^\d{1,2}$/.test(raw)) {
+            // "5" -> minutes -> HH:MM:00 using target hour
+            const mins = raw.padStart(2, '0');
+            raw = `${targetHour}:${mins}:00`;
+        } else if (/^\d{1,2}:\d{2}$/.test(raw)) {
+            // MM:SS -> convert to HH:MM:SS using target hour
+            const parts = raw.split(':');
+            const mins = parts[0].padStart(2, '0');
+            const secs = parts[1];
+            raw = `${targetHour}:${mins}:${secs}`;
+        } else if (/^\d{1,2}:\d{2}:\d{2}$/.test(raw)) {
+            // HH:MM:SS ok
+        } else {
+            // invalid format -> visual feedback, do not store
+            inputElem.classList.add('invalid-input');
+            return;
+        }
+    } else {
+        // empty -> allow clearing
     }
 
     inputElem.value = raw;
+
+    // write to rallyData
+    const rec = getControlRecord(rallyData[crewIndex], controlId);
     rec.time = raw;
     rallyData[crewIndex].times[controlId] = rec;
     markRowModified(crewIndex);
 }
 
-function handleExtraPenaltyChange(crewIndex, controlId, inputElem) {
-    let raw = inputElem.value.trim();
-    let seconds = mmssToSeconds(raw);
+function handleExtraPenaltyChange(ev) {
+    const inputElem = ev.target;
+    let raw = (inputElem.value || '').trim();
+    const crewIndex = Number(inputElem.dataset.crewIndex);
+    const controlId = inputElem.dataset.controlId;
+
+    const seconds = mmssToSeconds(raw);
     inputElem.value = secondsToMMSS(seconds);
 
-    let rec = getControlRecord(rallyData[crewIndex], controlId);
+    const rec = getControlRecord(rallyData[crewIndex], controlId);
     rec.extraSecs = seconds;
     rallyData[crewIndex].times[controlId] = rec;
     markRowModified(crewIndex);
 }
 
 function handleManualFailChange(crewIndex, controlId, isChecked) {
-    let rec = getControlRecord(rallyData[crewIndex], controlId);
-    rec.manualFail = isChecked;
+    const rec = getControlRecord(rallyData[crewIndex], controlId);
+    rec.manualFail = !!isChecked;
     rallyData[crewIndex].times[controlId] = rec;
     markRowModified(crewIndex);
 }
 
 function handleCheckboxChange(crewIndex, controlId, isChecked) {
-    let rec = getControlRecord(rallyData[crewIndex], controlId);
-    rec.visited = isChecked;
+    const rec = getControlRecord(rallyData[crewIndex], controlId);
+    rec.visited = !!isChecked;
     rallyData[crewIndex].times[controlId] = rec;
     markRowModified(crewIndex);
 }
@@ -685,24 +798,21 @@ function markRowModified(crewIndex) {
     if (row) row.classList.add('row-modified');
 }
 
-function handleKeyDown(event, currentIndex) {
+function handleKeyDown(event) {
+    // If Enter pressed in a .time-input, move to next visible .time-input
     if (event.key === 'Enter') {
         event.preventDefault();
-        const inputs = document.querySelectorAll('.time-input');
-        if (inputs[currentIndex + 1]) {
-            inputs[currentIndex + 1].focus();
-            inputs[currentIndex + 1].select();
+        const inputs = Array.from(document.querySelectorAll('.time-input')).filter(i => i.offsetParent !== null);
+        const currentIdx = inputs.indexOf(event.target);
+        if (currentIdx >= 0 && inputs[currentIdx + 1]) {
+            inputs[currentIdx + 1].focus();
+            inputs[currentIdx + 1].select();
         }
     }
 }
 
 function filterCars() {
-    const filterVal = document.getElementById('carFilter').value.trim();
-    rallyData.forEach((crew, index) => {
-        const row = document.getElementById(`entry-row-${index}`);
-        if (!row) return;
-        row.style.display = (filterVal === "" || crew.carNo.toString() === filterVal) ? "" : "none";
-    });
+    renderBatchEntryTable();
 }
 
 function saveAndRecalculate() {
@@ -778,30 +888,53 @@ function renderLeaderboard() {
     tbody.innerHTML = '';
 
     if (rallyData.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;">No competitors currently loaded.</td></tr>`;
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 7;
+        td.style.textAlign = 'center';
+        td.textContent = 'No competitors currently loaded.';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
 
     rallyData.forEach((crew, pos) => {
-        const minutes = Math.floor(crew.totalPenaltySeconds / 60);
-        const seconds = crew.totalPenaltySeconds % 60;
+        const minutes = Math.floor((crew.totalPenaltySeconds || 0) / 60);
+        const seconds = (crew.totalPenaltySeconds || 0) % 60;
 
         const row = document.createElement('tr');
         if (crew.isOTL) row.classList.add('row-otl');
 
-        const statusHtml = crew.isOTL 
-            ? `<span class="otl-badge">OTL (Retired)</span>` 
-            : `<span style="color:var(--success-color); font-weight:bold;">Active</span>`;
+        const tdPos = document.createElement('td');
+        if (!crew.isOTL) tdPos.className = `pos-${pos + 1}`;
+        tdPos.innerHTML = crew.isOTL ? 'OTL' : (pos + 1);
 
-        row.innerHTML = `
-            <td class="${!crew.isOTL ? 'pos-' + (pos + 1) : ''}">${crew.isOTL ? 'OTL' : (pos + 1)}</td>
-            <td><strong>#${crew.carNo}</strong></td>
-            <td>${crew.driver} / ${crew.coDriver}</td>
-            <td>${crew.class}</td>
-            <td>${crew.totalFails > 0 ? `<span class="fail-badge">${crew.totalFails} Fail(s)</span>` : '0'}</td>
-            <td>${minutes}m ${seconds}s</td>
-            <td>${statusHtml}</td>
-        `;
+        const tdCar = document.createElement('td');
+        tdCar.innerHTML = `<strong>#${crew.carNo}</strong>`;
+
+        const tdCrew = document.createElement('td');
+        tdCrew.textContent = `${crew.driver} / ${crew.coDriver}`;
+
+        const tdClass = document.createElement('td');
+        tdClass.textContent = crew.class;
+
+        const tdFails = document.createElement('td');
+        tdFails.innerHTML = crew.totalFails > 0 ? `<span class="fail-badge">${crew.totalFails} Fail(s)</span>` : '0';
+
+        const tdTime = document.createElement('td');
+        tdTime.textContent = `${minutes}m ${seconds}s`;
+
+        const tdStatus = document.createElement('td');
+        tdStatus.innerHTML = crew.isOTL ? '<span class="otl-badge">OTL (Retired)</span>' : '<span style="color:var(--success-color); font-weight:bold;">Active</span>';
+
+        row.appendChild(tdPos);
+        row.appendChild(tdCar);
+        row.appendChild(tdCrew);
+        row.appendChild(tdClass);
+        row.appendChild(tdFails);
+        row.appendChild(tdTime);
+        row.appendChild(tdStatus);
+
         tbody.appendChild(row);
     });
 }
@@ -811,54 +944,92 @@ function renderMasterMatrix() {
     table.innerHTML = '';
 
     if (!eventConfig.controls || eventConfig.controls.length === 0) {
-        table.innerHTML = `<tr><td style="text-align:center;">No controls available to render matrix.</td></tr>`;
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.style.textAlign = 'center';
+        td.textContent = 'No controls available to render matrix.';
+        tr.appendChild(td);
+        table.appendChild(tr);
         return;
     }
 
-    let headerRow = `<tr><th class="sticky-col">Car # & Crew</th>`;
+    // header
+    const thead = document.createElement('thead');
+    const headerRow = document.createElement('tr');
+    const thSticky = document.createElement('th');
+    thSticky.className = 'sticky-col';
+    thSticky.textContent = 'Car # & Crew';
+    headerRow.appendChild(thSticky);
     eventConfig.controls.forEach(ctrl => {
-        headerRow += `<th>${ctrl.id}${ctrl.scrubbed ? ' (SCRUB)' : ''}</th>`;
+        const th = document.createElement('th');
+        th.innerHTML = `${ctrl.id}${ctrl.scrubbed ? ' (SCRUB)' : ''}`;
+        headerRow.appendChild(th);
     });
-    headerRow += `<th>Total Fails</th><th>Total Time</th><th>Status</th></tr>`;
+    const thFails = document.createElement('th');
+    thFails.textContent = 'Total Fails';
+    const thTime = document.createElement('th');
+    thTime.textContent = 'Total Time';
+    const thStatus = document.createElement('th');
+    thStatus.textContent = 'Status';
+    headerRow.appendChild(thFails);
+    headerRow.appendChild(thTime);
+    headerRow.appendChild(thStatus);
+    thead.appendChild(headerRow);
 
-    let bodyRows = '';
+    // body
+    const tbody = document.createElement('tbody');
     rallyData.forEach(crew => {
-        const minutes = Math.floor(crew.totalPenaltySeconds / 60);
-        const seconds = crew.totalPenaltySeconds % 60;
+        const tr = document.createElement('tr');
+        if (crew.isOTL) tr.className = 'row-otl';
+        const tdLeft = document.createElement('td');
+        tdLeft.className = 'sticky-col';
+        tdLeft.innerHTML = `<strong>#${crew.carNo}</strong> - ${crew.driver}`;
+        tr.appendChild(tdLeft);
 
-        let row = `<tr class="${crew.isOTL ? 'row-otl' : ''}"><td class="sticky-col"><strong>#${crew.carNo}</strong> - ${crew.driver}</td>`;
         eventConfig.controls.forEach(ctrl => {
             const rec = getControlRecord(crew, ctrl.id);
+            const td = document.createElement('td');
             if (ctrl.scrubbed) {
-                row += `<td><span class="scrubbed-badge">SCRUB</span></td>`;
+                td.innerHTML = '<span class="scrubbed-badge">SCRUB</span>';
             } else if (ctrl.type === 'TC') {
                 let cellTxt = rec.time || '-';
                 let tags = [];
                 if (rec.extraSecs > 0) tags.push(`+${secondsToMMSS(rec.extraSecs)}`);
                 if (rec.manualFail) tags.push(`FAIL`);
                 if (tags.length > 0) cellTxt += ` <small>(${tags.join(', ')})</small>`;
-                row += `<td>${cellTxt}</td>`;
+                td.innerHTML = cellTxt;
             } else {
-                row += `<td>${rec.visited === false ? '<span class="fail-badge">FAIL</span>' : 'OK'}</td>`;
+                td.innerHTML = rec.visited === false ? '<span class="fail-badge">FAIL</span>' : 'OK';
             }
+            tr.appendChild(td);
         });
-        
-        const statusText = crew.isOTL ? `<span class="otl-badge">OTL</span>` : `OK`;
 
-        row += `<td><strong>${crew.totalFails}</strong></td><td>${minutes}m ${seconds}s</td><td>${statusText}</td></tr>`;
-        bodyRows += row;
+        const minutes = Math.floor((crew.totalPenaltySeconds || 0) / 60);
+        const seconds = (crew.totalPenaltySeconds || 0) % 60;
+        const tdFailsOut = document.createElement('td');
+        tdFailsOut.innerHTML = `<strong>${crew.totalFails}</strong>`;
+        const tdTimeOut = document.createElement('td');
+        tdTimeOut.textContent = `${minutes}m ${seconds}s`;
+        const tdStatusOut = document.createElement('td');
+        tdStatusOut.innerHTML = crew.isOTL ? '<span class="otl-badge">OTL</span>' : 'OK';
+
+        tr.appendChild(tdFailsOut);
+        tr.appendChild(tdTimeOut);
+        tr.appendChild(tdStatusOut);
+
+        tbody.appendChild(tr);
     });
 
-    table.innerHTML = `<thead>${headerRow}</thead><tbody>${bodyRows}</tbody>`;
+    table.appendChild(thead);
+    table.appendChild(tbody);
 }
 
-// --- TAB NAVIGATION ---
 function switchTab(tabId, event) {
     document.querySelectorAll('.view-panel').forEach(p => p.classList.remove('active'));
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-    
+
     document.getElementById(tabId).classList.add('active');
-    event.target.classList.add('active');
+    if (event && event.target) event.target.classList.add('active');
 }
 </script>
 </body>
