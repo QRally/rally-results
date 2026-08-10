@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>RODGE Rally Results System v2.1 (patched)</title>
+    <title>RODGE Rally Results System v2.2</title>
     <style>
         :root {
             --bg-dark: #121212;
@@ -344,7 +344,7 @@
                 <select id="classFilterSelect">
                     <option value="ALL">Show All Classes</option>
                     <option value="TOP3_EACH">⭐ Top 3 In Each Class Only</option>
-                    <!-- JS injects unique classes dynamically -->
+                    <!-- JS injects Master, Expert, Semi Expert, Novice dynamically -->
                 </select>
             </div>
         </div>
@@ -393,7 +393,6 @@ const OTL_LIMIT_SECONDS = 1800; // 30 minutes threshold
 
 // --- STARTUP & BINDINGS ---
 window.addEventListener('DOMContentLoaded', () => {
-    // Attach Static Navigation Event Listeners
     document.getElementById('tabBtnBatch').addEventListener('click', (e) => switchTab('batchEntry', e));
     document.getElementById('tabBtnLeaderboard').addEventListener('click', (e) => switchTab('leaderboard', e));
     document.getElementById('tabBtnMatrix').addEventListener('click', (e) => switchTab('masterMatrix', e));
@@ -469,7 +468,6 @@ function populateClassDropdown() {
     const existingClasses = new Set();
     rallyData.forEach(crew => { if (crew.class) existingClasses.add(crew.class); });
 
-    // Preserve first two option values
     select.innerHTML = `
         <option value="ALL">Show All Classes</option>
         <option value="TOP3_EACH">⭐ Top 3 In Each Class Only</option>
@@ -848,7 +846,7 @@ function renderLeaderboard() {
         if (classPos === 1) classBadge = `<span class="class-badge badge-c1">1st in ${crew.class}</span>`;
         else if (classPos === 2) classBadge = `<span class="class-badge badge-c2">2nd in ${crew.class}</span>`;
         else if (classPos === 3) classBadge = `<span class="class-badge badge-c3">3rd in ${crew.class}</span>`;
-        else classBadge = `<span style="font-size:0.85rem; color:#888;">${classPos}th</span>`;
+        else classBadge = `<span style="font-size:0.85rem; color:#888;">${classPos}th in ${crew.class}</span>`;
 
         tr.innerHTML = `
             <td class="${posClass}">${posStr}</td>
