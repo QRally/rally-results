@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-    <title>RODGE Results Service v2.3 (Validation Tightened)</title>
+    <title>RODGE Rally Results System v2.3</title>
     <style>
         :root {
             --bg-dark: #121212;
@@ -58,7 +58,6 @@
             display: flex;
             gap: 10px;
             flex-wrap: wrap;
-            align-items: center;
         }
 
         .control-selector {
@@ -99,7 +98,7 @@
             padding: 6px 10px;
             border-radius: 4px;
             font-size: 1rem;
-            width: 120px;
+            width: 100px;
             font-family: monospace;
         }
 
@@ -112,48 +111,6 @@
         .invalid-input {
             border-color: var(--fail-color) !important;
             background: #2c1212 !important;
-        }
-
-        .btn {
-            background-color: var(--accent);
-            color: #000;
-            border: none;
-            padding: 8px 16px;
-            font-weight: bold;
-            border-radius: 4px;
-            cursor: pointer;
-        }
-
-        .btn:disabled { opacity: 0.7; cursor: not-allowed; }
-
-        .btn:hover {
-            background-color: #e68a00;
-        }
-
-        .btn-danger {
-            background-color: var(--fail-color);
-            color: #fff;
-        }
-
-        .btn-danger:hover {
-            background-color: #d32f2f;
-        }
-
-        .btn-secondary {
-            background-color: #444;
-            color: #fff;
-        }
-
-        .btn-secondary:hover {
-            background-color: #555;
-        }
-
-        /* Save button invalid highlight */
-        .btn-save-invalid {
-            box-shadow: 0 0 0 4px rgba(244,67,54,0.12);
-            border: 2px solid var(--fail-color);
-            background-color: #ff6f61;
-            color: #fff;
         }
 
         table {
@@ -221,9 +178,36 @@
             display: block;
         }
 
-        .validation-msg {
-            color: var(--fail-color);
-            font-size: 0.85rem;
+        .btn {
+            background-color: var(--accent);
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            font-weight: bold;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .btn:hover {
+            background-color: #e68a00;
+        }
+
+        .btn-danger {
+            background-color: var(--fail-color);
+            color: #fff;
+        }
+
+        .btn-danger:hover {
+            background-color: #d32f2f;
+        }
+
+        .btn-secondary {
+            background-color: #444;
+            color: #fff;
+        }
+
+        .btn-secondary:hover {
+            background-color: #555;
         }
 
         .pos-1 { font-weight: bold; color: #ffd700; }
@@ -286,7 +270,7 @@
 <div class="container">
     <div class="card header-bar">
         <div>
-            <h1 id="appHeaderTitle">RODGE Results Service</h1>
+            <h1 id="appHeaderTitle">RODGE Rally Results Engine</h1>
             <div class="tab-buttons">
                 <button class="tab-btn active" id="tabBtnBatch">1. Batch Data Entry</button>
                 <button class="tab-btn" id="tabBtnLeaderboard">2. Live Leaderboard</button>
@@ -295,12 +279,6 @@
         </div>
         
         <div class="backup-controls">
-            <label for="singleNumberInterpret" style="color: #ddd; margin-right:6px;">Single-number as:</label>
-            <select id="singleNumberInterpret" title="Choose how single-number times are interpreted">
-                <option value="seconds">Seconds</option>
-                <option value="minutes">Minutes</option>
-            </select>
-
             <button class="btn btn-secondary" id="btnExport">💾 Export JSON Backup</button>
             <button class="btn btn-secondary" id="btnImportTrigger">📂 Import JSON</button>
             <button class="btn btn-secondary" id="btnResetRepo">🔄 Reload entries.json</button>
@@ -361,7 +339,7 @@
         <div class="header-bar" style="margin-bottom: 15px;">
             <h2>Live Event Leaderboard</h2>
             <div class="control-group">
-                <label for="classFilterSelect">Class Filter:</label>
+                <label for="classFilterSelect">Class Filter / Top 3 View:</label>
                 <select id="classFilterSelect">
                     <option value="ALL">Show All Classes</option>
                     <option value="TOP3_EACH">⭐ Top 3 In Each Class Only</option>
@@ -411,9 +389,6 @@ let rallyData = [];
 let modifiedRows = new Set();
 const OTL_LIMIT_SECONDS = 1800; // 30 minutes threshold
 
-// single-number interpretation: 'seconds' or 'minutes' (default 'seconds')
-let singleNumberInterpret = localStorage.getItem('rodge_single_number') || 'seconds';
-
 // --- STARTUP & BINDINGS ---
 window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('tabBtnBatch').addEventListener('click', (e) => switchTab('batchEntry', e));
@@ -432,29 +407,12 @@ window.addEventListener('DOMContentLoaded', () => {
     document.getElementById('btnSaveBatch').addEventListener('click', saveAndRecalculate);
     document.getElementById('classFilterSelect').addEventListener('change', renderLeaderboard);
 
-    const interpretSelect = document.getElementById('singleNumberInterpret');
-    interpretSelect.value = singleNumberInterpret;
-    interpretSelect.addEventListener('change', (e) => {
-        singleNumberInterpret = e.target.value;
-        localStorage.setItem('rodge_single_number', singleNumberInterpret);
-        // re-validate all batch inputs when interpretation changes
-        renderBatchEntryTable();
-    });
-
     const localSaved = localStorage.getItem('rodge_rally_session');
     if (localSaved) {
-        try {
-            loadDataset(JSON.parse(localSaved));
-        } catch (err) {
-            console.warn("Failed parsing local saved session, loading repo:", err);
-            fetchRepoEntries();
-        }
+        loadDataset(JSON.parse(localSaved));
     } else {
         fetchRepoEntries();
     }
-
-    // initial save button state
-    updateSaveButtonState();
 });
 
 function switchTab(viewId, event) {
@@ -490,7 +448,6 @@ function loadDataset(packageData) {
     eventConfig = packageData.eventConfig || { eventName: "Rally Event", controls: [] };
     rallyData = packageData.rallyData || [];
 
-    // ensure times objects exist
     rallyData.forEach(crew => {
         if (!crew.times) crew.times = {};
     });
@@ -502,7 +459,6 @@ function loadDataset(packageData) {
     initControlSelector();
     populateClassDropdown();
     recalculateAll();
-    persistToLocalStorage();
 }
 
 function populateClassDropdown() {
@@ -536,11 +492,7 @@ function populateClassDropdown() {
 
 function persistToLocalStorage() {
     const dataPackage = { eventConfig, rallyData };
-    try {
-        localStorage.setItem('rodge_rally_session', JSON.stringify(dataPackage));
-    } catch (err) {
-        console.warn('Failed to persist to localStorage:', err);
-    }
+    localStorage.setItem('rodge_rally_session', JSON.stringify(dataPackage));
 }
 
 function resetToRepoData() {
@@ -550,54 +502,29 @@ function resetToRepoData() {
     }
 }
 
-// --- HELPER CONVERSIONS & STRICT VALIDATION ---
-// Stricter parsing: HH:MM:SS (HH 0-23, MM 0-59, SS 0-59), MM:SS (MM 0-59), single-number based on interpret
-function parseTimeStrict(timeStr) {
-    if (timeStr === null || timeStr === undefined) return null;
+// --- HELPER CONVERSIONS ---
+function timeToSeconds(timeStr) {
+    if (!timeStr) return null;
     const s = ('' + timeStr).trim();
-    if (s === '') return null;
-
-    // HH:MM:SS where HH 0-23, MM 00-59, SS 00-59
-    const hhmmss = /^([01]?\d|2[0-3]):([0-5]\d):([0-5]\d)$/;
-    // MM:SS where MM 0-59 (forces hours for >=60 minutes)
-    const mmss = /^([0-5]?\d):([0-5]\d)$/;
-    // single numeric
-    const single = /^(\d+)$/;
-
-    let m;
-    if ((m = s.match(hhmmss))) {
-        const hh = Number(m[1]), mm = Number(m[2]), ss = Number(m[3]);
-        return hh * 3600 + mm * 60 + ss;
-    }
-    if ((m = s.match(mmss))) {
-        const mm = Number(m[1]), ss = Number(m[2]);
-        return mm * 60 + ss;
-    }
-    if ((m = s.match(single))) {
-        const n = Number(m[1]);
-        const secs = singleNumberInterpret === 'seconds' ? n : n * 60;
-        // disallow values representing >= 24 hours
-        if (secs >= 86400) return null;
-        return secs;
-    }
+    const parts = s.split(':').map(x => Number(x));
+    if (parts.some(isNaN)) return null;
+    if (parts.length === 3) return (parts[0] || 0) * 3600 + (parts[1] || 0) * 60 + (parts[2] || 0);
+    if (parts.length === 2) return (parts[0] || 0) * 60 + (parts[1] || 0);
+    if (parts.length === 1) return (parts[0] || 0) * 60;
     return null;
 }
 
-function timeToSeconds(timeStr) {
-    const secs = parseTimeStrict(timeStr);
-    return secs === null ? null : secs;
-}
-
 function mmssToSeconds(mmssStr) {
-    if (mmssStr === null || mmssStr === undefined) return 0;
+    if (!mmssStr) return 0;
     const s = ('' + mmssStr).trim();
-    if (s === '') return 0;
-    const secs = parseTimeStrict(s);
-    return secs === null ? NaN : secs;
+    const parts = s.split(':').map(x => Number(x));
+    if (parts.some(isNaN)) return 0;
+    if (parts.length === 2) return (parts[0] || 0) * 60 + (parts[1] || 0);
+    return (parts[0] || 0) * 60;
 }
 
 function secondsToMMSS(totalSecs) {
-    if (!Number.isFinite(totalSecs) || totalSecs <= 0) return "00:00";
+    if (!totalSecs || totalSecs <= 0) return "00:00";
     const mins = Math.floor(totalSecs / 60);
     const secs = totalSecs % 60;
     return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
@@ -609,9 +536,9 @@ function getControlRecord(crew, controlId) {
     if (typeof rec === 'object' && rec !== null) {
         return {
             time: rec.time || "",
-            extraSecs: Number(rec.extraSecs) || 0,
-            manualFail: !!rec.manualFail,
-            visited: rec.visited !== undefined ? !!rec.visited : true
+            extraSecs: rec.extraSecs || 0,
+            manualFail: rec.manualFail || false,
+            visited: rec.visited !== undefined ? rec.visited : true
         };
     }
     if (typeof rec === 'boolean') {
@@ -654,7 +581,7 @@ function processCrewPenalties(crew) {
                         }
                     }
                 }
-                penaltySeconds += (Number(rec.extraSecs) || 0);
+                penaltySeconds += rec.extraSecs;
             } else if (ctrl.type === "PC") {
                 if (rec.visited === false) fails += 1;
             }
@@ -684,9 +611,6 @@ function initControlSelector() {
         opt.textContent = `${ctrl.id} - (${ctrl.type === 'TC' ? 'Time Control' : 'Pass Control'})${ctrl.scrubbed ? ' [SCRUBBED]' : ''}`;
         select.appendChild(opt);
     });
-    if (!select.value && select.options.length > 0) {
-        select.selectedIndex = 0;
-    }
     renderBatchEntryTable();
 }
 
@@ -694,99 +618,8 @@ function filterCars() {
     renderBatchEntryTable();
 }
 
-function validateRowInputsForRow(row, control) {
-    const inputRec = row.querySelector('.time-input');
-    const inputExtra = row.querySelector('.penalty-input');
-    const statusCell = row.querySelector('.validation-status');
-
-    let messages = [];
-
-    // Validate recorded entry for TC
-    if (control.type === 'TC') {
-        const v = (inputRec && inputRec.value) ? inputRec.value.trim() : '';
-        if (v !== '') {
-            const secs = parseTimeStrict(v);
-            if (secs === null) messages.push('Invalid time format or unrealistic value (use HH:MM:SS or MM:SS; hours 0–23, minutes/seconds 0–59)');
-            else if (!Number.isFinite(secs) || secs < 0) messages.push('Invalid time value');
-        }
-    }
-
-    // Validate extra penalty
-    const ev = (inputExtra && inputExtra.value) ? inputExtra.value.trim() : '';
-    if (ev !== '') {
-        const extraSecs = mmssToSeconds(ev);
-        if (!Number.isFinite(extraSecs)) messages.push('Invalid penalty format or unrealistic value (use MM:SS or single number)');
-    }
-
-    // Apply classes
-    if (inputRec) {
-        if (messages.some(m => m.toLowerCase().includes('time'))) inputRec.classList.add('invalid-input');
-        else inputRec.classList.remove('invalid-input');
-    }
-    if (inputExtra) {
-        if (messages.some(m => m.toLowerCase().includes('penalty') || m.toLowerCase().includes('mm:ss'))) inputExtra.classList.add('invalid-input');
-        else inputExtra.classList.remove('invalid-input');
-    }
-
-    // Status cell content
-    statusCell.innerHTML = '';
-    if (messages.length) {
-        messages.forEach(m => {
-            const div = document.createElement('div');
-            div.className = 'validation-msg';
-            div.textContent = m;
-            statusCell.appendChild(div);
-        });
-    } else {
-        // Show OTL if applicable
-        if (control.type === 'TC') {
-            const recVal = inputRec ? inputRec.value.trim() : '';
-            if (recVal) {
-                const recSecs = parseTimeStrict(recVal);
-                const dueSecs = parseTimeStrict(control.targetTime);
-                if (Number.isFinite(recSecs) && Number.isFinite(dueSecs)) {
-                    const carNo = row.querySelector('.sticky-col') ? row.querySelector('.sticky-col').textContent : '';
-                    const carOffset = (parseInt(carNo) || 0) * 60;
-                    if (recSecs - (dueSecs + carOffset) >= OTL_LIMIT_SECONDS) {
-                        const span = document.createElement('span');
-                        span.className = 'otl-badge';
-                        span.textContent = 'OTL';
-                        statusCell.appendChild(span);
-                    }
-                }
-            }
-        } else {
-            const chk = row.querySelector('input[type="checkbox"]');
-            if (chk && !chk.checked) {
-                const span = document.createElement('span');
-                span.className = 'fail-badge';
-                span.textContent = 'Missed';
-                statusCell.appendChild(span);
-            }
-        }
-    }
-
-    // update global save button state
-    updateSaveButtonState();
-
-    return messages.length === 0;
-}
-
-function attachRowListeners(row, control) {
-    const inputs = row.querySelectorAll('input');
-    inputs.forEach(inp => {
-        inp.addEventListener('input', () => {
-            validateRowInputsForRow(row, control);
-        });
-        inp.addEventListener('blur', () => {
-            validateRowInputsForRow(row, control);
-        });
-    });
-}
-
 function renderBatchEntryTable() {
-    const select = document.getElementById('controlSelect');
-    const activeCtrlId = select ? select.value : '';
+    const activeCtrlId = document.getElementById('controlSelect').value;
     const tbody = document.getElementById('batchEntryBody');
     tbody.innerHTML = '';
     modifiedRows.clear();
@@ -795,433 +628,280 @@ function renderBatchEntryTable() {
     const scrubBtn = document.getElementById('scrubBtn');
 
     if (!activeCtrlId) {
-        scrubWarning.style.display = 'none';
-        scrubBtn.disabled = true;
-        updateSaveButtonState();
-        return;
-    } else {
-        scrubBtn.disabled = false;
-    }
-
-    const control = eventConfig.controls ? eventConfig.controls.find(c => c.id === activeCtrlId) : null;
-    if (!control) {
-        scrubWarning.style.display = 'none';
-        updateSaveButtonState();
+        scrubWarning.style.display = "none";
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 8;
+        td.style.textAlign = "center";
+        td.textContent = "Load an entries.json file to view controls and competitor lists.";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
         return;
     }
 
-    // show/hide scrub banner
-    if (control.scrubbed) {
-        scrubWarning.style.display = 'flex';
-        scrubBtn.textContent = 'Unscrub This Control';
-        scrubBtn.classList.remove('btn-danger');
-        scrubBtn.classList.add('btn-secondary');
+    const currentCtrl = eventConfig.controls.find(c => c.id === activeCtrlId);
+
+    if (currentCtrl && currentCtrl.scrubbed) {
+        scrubWarning.style.display = "flex";
+        scrubBtn.style.display = "none";
     } else {
-        scrubWarning.style.display = 'none';
-        scrubBtn.textContent = 'Scrub This Control';
-        scrubBtn.classList.add('btn-danger');
-        scrubBtn.classList.remove('btn-secondary');
+        scrubWarning.style.display = "none";
+        scrubBtn.style.display = "inline-block";
     }
 
-    const filterVal = (document.getElementById('carFilter').value || '').trim();
+    const filterVal = document.getElementById('carFilter').value.trim();
 
-    // sort rallyData by car number numeric when possible
-    const sorted = rallyData.slice().sort((a, b) => {
-        const na = parseInt(a.carNo);
-        const nb = parseInt(b.carNo);
-        if (!isNaN(na) && !isNaN(nb)) return na - nb;
-        return ('' + (a.carNo || '')).localeCompare('' + (b.carNo || ''));
-    });
-
-    sorted.forEach(crew => {
-        if (filterVal && !('' + crew.carNo).includes(filterVal)) return;
+    rallyData.forEach(crew => {
+        if (filterVal && String(crew.carNo) !== filterVal) return;
 
         const rec = getControlRecord(crew, activeCtrlId);
-
         const tr = document.createElement('tr');
-        if (rec.manualFail) tr.classList.add('row-modified');
-        if (rec.isOTL) tr.classList.add('row-otl');
+        tr.dataset.carNo = crew.carNo;
 
-        // Car #
-        const tdCar = document.createElement('td');
-        tdCar.className = 'sticky-col';
-        tdCar.textContent = crew.carNo;
-        tr.appendChild(tdCar);
+        let dueTimeHtml = `<td><span class="warn-text">N/A</span></td>`;
+        let inputHtml = "";
 
-        // Crew name
-        const tdCrew = document.createElement('td');
-        tdCrew.textContent = crew.crew || crew.crewName || '';
-        tr.appendChild(tdCrew);
+        if (currentCtrl.type === 'TC') {
+            // Calculate Due Time: Target Time + (Car No. * 1 Minute)
+            const baseTargetSecs = timeToSeconds(currentCtrl.targetTime);
+            if (baseTargetSecs !== null) {
+                const carOffsetSecs = (parseInt(crew.carNo) || 0) * 60;
+                const dueSecs = baseTargetSecs + carOffsetSecs;
+                
+                // Roll over 24H formatting for midnight events
+                const h = Math.floor(dueSecs / 3600) % 24;
+                const m = Math.floor((dueSecs % 3600) / 60);
+                const s = dueSecs % 60;
+                const formattedDue = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+                
+                dueTimeHtml = `<td style="font-family: monospace; font-size: 1.1em; color: var(--accent);"><strong>${formattedDue}</strong></td>`;
+            }
 
-        // Class
-        const tdClass = document.createElement('td');
-        tdClass.textContent = crew.class || '';
-        tr.appendChild(tdClass);
-
-        // Due Time (display from control)
-        const tdDue = document.createElement('td');
-        tdDue.textContent = control.targetTime || '';
-        tr.appendChild(tdDue);
-
-        // Recorded Entry input
-        const tdRecorded = document.createElement('td');
-        const inputRec = document.createElement('input');
-        inputRec.type = 'text';
-        inputRec.className = 'time-input';
-        inputRec.value = rec.time || '';
-        inputRec.dataset.car = crew.carNo;
-        inputRec.dataset.control = activeCtrlId;
-        inputRec.placeholder = control.type === 'TC' ? 'MM:SS or HH:MM:SS' : 'Visited?';
-        tdRecorded.appendChild(inputRec);
-        tr.appendChild(tdRecorded);
-
-        // Extra Penalty
-        const tdExtra = document.createElement('td');
-        const inputExtra = document.createElement('input');
-        inputExtra.type = 'text';
-        inputExtra.className = 'penalty-input';
-        inputExtra.value = secondsToMMSS(Number(rec.extraSecs) || 0);
-        inputExtra.dataset.car = crew.carNo;
-        inputExtra.dataset.control = activeCtrlId;
-        inputExtra.placeholder = 'MM:SS';
-        tdExtra.appendChild(inputExtra);
-        tr.appendChild(tdExtra);
-
-        // Approach/Rule (+1 Fail) or PC visited toggle
-        const tdApproach = document.createElement('td');
-        if (control.type === 'TC') {
-            const chk = document.createElement('input');
-            chk.type = 'checkbox';
-            chk.checked = !!rec.manualFail;
-            chk.dataset.car = crew.carNo;
-            chk.dataset.control = activeCtrlId;
-            tdApproach.appendChild(chk);
-            const lbl = document.createElement('span');
-            lbl.style.marginLeft = '8px';
-            lbl.textContent = 'Manual Fail';
-            tdApproach.appendChild(lbl);
+            const displayTime = rec.time || "";
+            const displayExtra = rec.extraSecs ? secondsToMMSS(rec.extraSecs) : "";
+            
+            inputHtml = `
+                <td><input type="text" class="time-input" data-field="time" value="${displayTime}" placeholder="HH:MM:SS"></td>
+                <td><input type="text" class="penalty-input" data-field="extraSecs" value="${displayExtra}" placeholder="MM:SS"></td>
+                <td>
+                    <label><input type="checkbox" data-field="manualFail" ${rec.manualFail ? "checked" : ""}> Extra Fail</label>
+                </td>
+            `;
         } else {
-            // PC - visited toggle (checkbox checked == visited)
-            const chk = document.createElement('input');
-            chk.type = 'checkbox';
-            chk.checked = !!rec.visited;
-            chk.dataset.car = crew.carNo;
-            chk.dataset.control = activeCtrlId;
-            tdApproach.appendChild(chk);
-            const lbl = document.createElement('span');
-            lbl.style.marginLeft = '8px';
-            lbl.textContent = 'Visited';
-            tdApproach.appendChild(lbl);
+            inputHtml = `
+                <td><span class="warn-text">Pass Control</span></td>
+                <td><span class="warn-text">N/A</span></td>
+                <td>
+                    <label><input type="checkbox" data-field="visited" ${rec.visited ? "checked" : ""}> Visited / Signed</label>
+                </td>
+            `;
         }
-        tr.appendChild(tdApproach);
 
-        // Validation / Status
-        const tdStatus = document.createElement('td');
-        tdStatus.className = 'validation-status';
-        tr.appendChild(tdStatus);
+        tr.innerHTML = `
+            <td><strong>#${crew.carNo}</strong></td>
+            <td>${crew.driver} / ${crew.coDriver}</td>
+            <td><span class="class-badge badge-c1">${crew.class || 'Unclassed'}</span></td>
+            ${dueTimeHtml}
+            ${inputHtml}
+            <td class="status-cell">Valid</td>
+        `;
 
         tbody.appendChild(tr);
-
-        // attach listeners for live validation
-        attachRowListeners(tr, control);
-        // initial validation
-        validateRowInputsForRow(tr, control);
     });
 
-    // update Save button after full table
-    updateSaveButtonState();
-}
-
-function updateSaveButtonState() {
-    const saveBtn = document.getElementById('btnSaveBatch');
-    const invalids = document.querySelectorAll('#batchEntryBody .invalid-input');
-    if (invalids.length > 0) {
-        saveBtn.classList.add('btn-save-invalid');
-        saveBtn.disabled = true;
-    } else {
-        saveBtn.classList.remove('btn-save-invalid');
-        saveBtn.disabled = false;
-    }
+    tbody.querySelectorAll('input').forEach(input => {
+        input.addEventListener('input', (e) => {
+            const tr = e.target.closest('tr');
+            tr.classList.add('row-modified');
+            modifiedRows.add(tr.dataset.carNo);
+        });
+    });
 }
 
 function toggleControlScrub() {
-    const select = document.getElementById('controlSelect');
-    const ctrlId = select ? select.value : null;
-    if (!ctrlId) return;
-    const ctrl = eventConfig.controls.find(c => c.id === ctrlId);
-    if (!ctrl) return;
-    ctrl.scrubbed = !ctrl.scrubbed;
-    initControlSelector();
-    renderBatchEntryTable();
-    recalculateAll();
-    persistToLocalStorage();
+    const activeCtrlId = document.getElementById('controlSelect').value;
+    const ctrl = eventConfig.controls.find(c => c.id === activeCtrlId);
+    if (ctrl) {
+        ctrl.scrubbed = !ctrl.scrubbed;
+        initControlSelector();
+        document.getElementById('controlSelect').value = activeCtrlId;
+        renderBatchEntryTable();
+        recalculateAll();
+    }
 }
 
 function saveAndRecalculate() {
-    const tbody = document.getElementById('batchEntryBody');
-    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const activeCtrlId = document.getElementById('controlSelect').value;
+    if (!activeCtrlId) return;
 
-    // check for invalid inputs
-    const invalids = tbody.querySelectorAll('.invalid-input');
-    if (invalids.length > 0) {
-        alert('There are invalid time/penalty fields. Fix them before saving.');
-        return;
-    }
+    const currentCtrl = eventConfig.controls.find(c => c.id === activeCtrlId);
+    const rows = document.querySelectorAll('#batchEntryBody tr');
 
-    const select = document.getElementById('controlSelect');
-    const activeCtrlId = select ? select.value : '';
-    if (!activeCtrlId) {
-        alert('No control selected.');
-        return;
-    }
-
-    rows.forEach(row => {
-        const inputs = row.querySelectorAll('input');
-        // gather by data attributes
-        let carNo = null;
-        let timeVal = '';
-        let extraVal = '';
-        let manualFail = false;
-        let visited = true;
-
-        inputs.forEach(inp => {
-            const car = inp.dataset.car;
-            const control = inp.dataset.control;
-            if (control !== activeCtrlId) return;
-            carNo = carNo || car;
-            if (inp.classList.contains('time-input')) {
-                timeVal = inp.value.trim();
-            } else if (inp.classList.contains('penalty-input')) {
-                extraVal = inp.value.trim();
-            } else if (inp.type === 'checkbox') {
-                const ctrl = eventConfig.controls.find(c => c.id === activeCtrlId);
-                if (ctrl) {
-                    if (ctrl.type === 'TC') {
-                        manualFail = inp.checked;
-                    } else {
-                        visited = inp.checked;
-                    }
-                }
-            }
-        });
-
-        // find crew by carNo
-        const crew = rallyData.find(c => ('' + c.carNo) === ('' + carNo));
+    rows.forEach(tr => {
+        const carNo = parseInt(tr.dataset.carNo);
+        const crew = rallyData.find(c => c.carNo === carNo);
         if (!crew) return;
 
-        crew.times = crew.times || {};
-        // store normalized record
-        const record = {};
-        if (timeVal !== '') record.time = timeVal;
-        else record.time = "";
+        if (!crew.times) crew.times = {};
 
-        const extraSecs = mmssToSeconds(extraVal);
-        record.extraSecs = Number.isFinite(extraSecs) ? extraSecs : 0;
-        record.manualFail = !!manualFail;
-        record.visited = !!visited;
+        if (currentCtrl.type === 'TC') {
+            const timeVal = tr.querySelector('[data-field="time"]').value.trim();
+            const extraVal = tr.querySelector('[data-field="extraSecs"]').value.trim();
+            const failVal = tr.querySelector('[data-field="manualFail"]').checked;
 
-        crew.times[activeCtrlId] = record;
+            crew.times[activeCtrlId] = {
+                time: timeVal,
+                extraSecs: mmssToSeconds(extraVal),
+                manualFail: failVal,
+                visited: true
+            };
+        } else {
+            const visitedVal = tr.querySelector('[data-field="visited"]').checked;
+            crew.times[activeCtrlId] = {
+                time: "",
+                extraSecs: 0,
+                manualFail: false,
+                visited: visitedVal
+            };
+        }
     });
 
-    persistToLocalStorage();
     recalculateAll();
     renderBatchEntryTable();
-    alert('Saved control batch and recalculated.');
+    alert("Batch saved successfully and leaderboard updated!");
 }
 
-// --- LEADERBOARD & MATRIX ---
-function recalculateAll() {
-    renderLeaderboard();
-    renderMatrix();
-}
-
+// --- LEADERBOARD RENDER ---
 function renderLeaderboard() {
     const tbody = document.getElementById('leaderboardBody');
     tbody.innerHTML = '';
 
-    const results = rallyData.map(crew => {
-        const res = processCrewPenalties(crew);
-        return {
-            carNo: crew.carNo,
-            crewName: crew.crew || crew.crewName || '',
-            class: crew.class || '',
-            fails: res.fails,
-            penaltySeconds: res.penaltySeconds,
-            isOTL: res.isOTL,
-            rawCrew: crew
-        };
-    });
+    const filter = document.getElementById('classFilterSelect').value;
 
-    results.sort((a, b) => {
+    const sortedData = [...rallyData].map(crew => {
+        const stats = processCrewPenalties(crew);
+        return { ...crew, ...stats };
+    }).sort((a, b) => {
         if (a.isOTL !== b.isOTL) return a.isOTL ? 1 : -1;
         if (a.fails !== b.fails) return a.fails - b.fails;
         return a.penaltySeconds - b.penaltySeconds;
     });
 
-    const classFilter = document.getElementById('classFilterSelect').value;
-    let display = results.slice();
-    if (classFilter && classFilter !== 'ALL' && classFilter !== 'TOP3_EACH') {
-        display = display.filter(r => r.class === classFilter);
+    const classCounts = {};
+    const processedData = sortedData.map(crew => {
+        classCounts[crew.class] = (classCounts[crew.class] || 0) + 1;
+        return { ...crew, classPos: classCounts[crew.class] };
+    });
+
+    let displayList = processedData;
+
+    if (filter === "TOP3_EACH") {
+        displayList = processedData.filter(c => c.classPos <= 3);
+    } else if (filter !== "ALL") {
+        displayList = processedData.filter(c => c.class === filter);
     }
 
-    if (classFilter === 'TOP3_EACH') {
-        const byClass = {};
-        results.forEach(r => {
-            if (!byClass[r.class]) byClass[r.class] = [];
-            byClass[r.class].push(r);
-        });
-        display = [];
-        Object.keys(byClass).forEach(cls => {
-            const arr = byClass[cls].slice(0, 3);
-            display.push(...arr);
-        });
-        display.sort((a, b) => {
-            if (a.isOTL !== b.isOTL) return a.isOTL ? 1 : -1;
-            if (a.fails !== b.fails) return a.fails - b.fails;
-            return a.penaltySeconds - b.penaltySeconds;
-        });
-    }
-
-    let overallPos = 0;
-    const classRunning = {};
-    display.forEach(r => {
-        overallPos += 1;
-        if (!classRunning[r.class]) classRunning[r.class] = 0;
-        classRunning[r.class] += 1;
-
+    displayList.forEach((crew, index) => {
         const tr = document.createElement('tr');
-        if (r.isOTL) tr.classList.add('row-otl');
+        if (crew.isOTL) tr.classList.add('row-otl');
 
-        const tdPos = document.createElement('td');
-        tdPos.textContent = overallPos;
-        if (overallPos === 1) tdPos.classList.add('pos-1');
-        if (overallPos === 2) tdPos.classList.add('pos-2');
-        if (overallPos === 3) tdPos.classList.add('pos-3');
-        tr.appendChild(tdPos);
+        let posClass = "";
+        if (index === 0) posClass = "pos-1";
+        else if (index === 1) posClass = "pos-2";
+        else if (index === 2) posClass = "pos-3";
 
-        const tdCar = document.createElement('td'); tdCar.textContent = r.carNo; tr.appendChild(tdCar);
-        const tdCrew = document.createElement('td'); tdCrew.textContent = r.crewName; tr.appendChild(tdCrew);
-        const tdClass = document.createElement('td'); tdClass.textContent = r.class; tr.appendChild(tdClass);
-
-        const tdClassPos = document.createElement('td');
-        tdClassPos.textContent = classRunning[r.class] || '';
-        tr.appendChild(tdClassPos);
-
-        const tdFails = document.createElement('td'); tdFails.textContent = r.fails; tr.appendChild(tdFails);
-
-        const tdPenalty = document.createElement('td');
-        tdPenalty.textContent = secondsToMMSS(r.penaltySeconds);
-        tr.appendChild(tdPenalty);
-
-        const tdStatus = document.createElement('td');
-        if (r.isOTL) {
-            const span = document.createElement('span');
-            span.className = 'otl-badge';
-            span.textContent = 'OTL';
-            tdStatus.appendChild(span);
-        } else {
-            tdStatus.textContent = '';
-        }
-        tr.appendChild(tdStatus);
+        tr.innerHTML = `
+            <td class="${posClass}">${index + 1}</td>
+            <td><strong>#${crew.carNo}</strong></td>
+            <td>${crew.driver} / ${crew.coDriver}</td>
+            <td><span class="class-badge badge-c1">${crew.class || 'Unclassed'}</span></td>
+            <td>${crew.classPos}</td>
+            <td>${crew.fails > 0 ? `<span class="fail-badge">${crew.fails} Fail(s)</span>` : '0'}</td>
+            <td>${secondsToMMSS(crew.penaltySeconds)}</td>
+            <td>${crew.isOTL ? '<span class="otl-badge">OTL</span>' : '<span style="color:var(--success-color);font-weight:bold;">Active</span>'}</td>
+        `;
 
         tbody.appendChild(tr);
     });
 }
 
-function renderMatrix() {
+// --- MASTER MATRIX RENDER ---
+function renderMasterMatrix() {
     const table = document.getElementById('matrixTable');
     table.innerHTML = '';
 
-    const thead = document.createElement('thead');
-    const headerRow = document.createElement('tr');
+    if (!eventConfig.controls || eventConfig.controls.length === 0) {
+        table.innerHTML = '<tr><td>No controls defined.</td></tr>';
+        return;
+    }
 
-    const hCar = document.createElement('th'); hCar.className = 'sticky-col'; hCar.textContent = 'Car #'; headerRow.appendChild(hCar);
-    const hCrew = document.createElement('th'); hCrew.textContent = 'Crew'; headerRow.appendChild(hCrew);
-    const hClass = document.createElement('th'); hClass.textContent = 'Class'; headerRow.appendChild(hClass);
-
-    (eventConfig.controls || []).forEach(ctrl => {
-        const th = document.createElement('th');
-        th.textContent = `${ctrl.id}${ctrl.scrubbed ? ' [SCRUBBED]' : ''}`;
-        headerRow.appendChild(th);
+    let headerHtml = `<thead><tr><th class="sticky-col">Car #</th><th class="sticky-col" style="left:70px;">Crew</th>`;
+    eventConfig.controls.forEach(ctrl => {
+        headerHtml += `<th>${ctrl.id}${ctrl.scrubbed ? ' (S)' : ''}</th>`;
     });
+    headerHtml += `<th>Total Fails</th><th>Total Time</th></tr></thead>`;
 
-    thead.appendChild(headerRow);
-    table.appendChild(thead);
+    let bodyHtml = '<tbody>';
+    rallyData.forEach(crew => {
+        const stats = processCrewPenalties(crew);
+        bodyHtml += `<tr>
+            <td class="sticky-col"><strong>#${crew.carNo}</strong></td>
+            <td class="sticky-col" style="left:70px;">${crew.driver} / ${crew.coDriver}</td>`;
 
-    const tbody = document.createElement('tbody');
-
-    const sorted = rallyData.slice().sort((a, b) => {
-        const na = parseInt(a.carNo);
-        const nb = parseInt(b.carNo);
-        if (!isNaN(na) && !isNaN(nb)) return na - nb;
-        return ('' + (a.carNo || '')).localeCompare('' + (b.carNo || ''));
-    });
-
-    sorted.forEach(crew => {
-        const tr = document.createElement('tr');
-        const tdCar = document.createElement('td'); tdCar.className = 'sticky-col'; tdCar.textContent = crew.carNo; tr.appendChild(tdCar);
-        const tdCrew = document.createElement('td'); tdCrew.textContent = crew.crew || crew.crewName || ''; tr.appendChild(tdCrew);
-        const tdClass = document.createElement('td'); tdClass.textContent = crew.class || ''; tr.appendChild(tdClass);
-
-        (eventConfig.controls || []).forEach(ctrl => {
-            const td = document.createElement('td');
+        eventConfig.controls.forEach(ctrl => {
             const rec = getControlRecord(crew, ctrl.id);
-            let content = '';
-
             if (ctrl.scrubbed) {
-                td.classList.add('scrubbed-badge');
-            }
-
-            if (ctrl.type === 'TC') {
-                if (rec.time) content = rec.time;
-                if (rec.extraSecs) content += (content ? ' + ' : '') + secondsToMMSS(rec.extraSecs);
-                if (rec.manualFail) content += (content ? ' ' : '') + '⨯';
+                bodyHtml += `<td class="scrubbed-badge">Scrubbed</td>`;
+            } else if (ctrl.type === 'TC') {
+                let cellText = rec.time || '--:--:--';
+                if (rec.extraSecs > 0) cellText += ` (+${secondsToMMSS(rec.extraSecs)})`;
+                if (rec.manualFail) cellText += ' [F]';
+                bodyHtml += `<td>${cellText}</td>`;
             } else {
-                content = rec.visited ? 'Visited' : 'Missed';
+                bodyHtml += `<td>${rec.visited ? '✓ Visited' : '<span class="fail-badge">✗ Fail</span>'}</td>`;
             }
-
-            td.textContent = content;
-            tr.appendChild(td);
         });
 
-        tbody.appendChild(tr);
+        bodyHtml += `<td>${stats.fails}</td><td>${secondsToMMSS(stats.penaltySeconds)}</td></tr>`;
     });
+    bodyHtml += '</tbody>';
 
-    table.appendChild(tbody);
+    table.innerHTML = headerHtml + bodyHtml;
 }
 
-// --- IMPORT / EXPORT ---
+function recalculateAll() {
+    renderLeaderboard();
+    renderMasterMatrix();
+    persistToLocalStorage();
+}
+
 function exportJSONBackup() {
     const dataPackage = { eventConfig, rallyData };
-    const blob = new Blob([JSON.stringify(dataPackage, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = (eventConfig.eventName || 'rodge_event').replace(/\s+/g, '_') + '_backup.json';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    const str = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataPackage, null, 2));
+    const dlAnchor = document.createElement('a');
+    dlAnchor.setAttribute("href", str);
+    dlAnchor.setAttribute("download", `RODGE_Rally_Backup_${new Date().toISOString().slice(0,10)}.json`);
+    document.body.appendChild(dlAnchor);
+    dlAnchor.click();
+    dlAnchor.remove();
 }
 
 function importJSONBackup(e) {
-    const file = e.target.files && e.target.files[0];
+    const file = e.target.files[0];
     if (!file) return;
+
     const reader = new FileReader();
-    reader.onload = function(ev) {
+    reader.onload = function(evt) {
         try {
-            const parsed = JSON.parse(ev.target.result);
-            if (!parsed.eventConfig || !parsed.rallyData) {
-                alert('Imported file missing eventConfig or rallyData.');
-                return;
+            const data = JSON.parse(evt.target.result);
+            if (data.eventConfig && data.rallyData) {
+                loadDataset(data);
+                alert("JSON Backup loaded successfully!");
+            } else {
+                alert("Invalid JSON format.");
             }
-            loadDataset(parsed);
-            persistToLocalStorage();
-            alert('Imported dataset successfully.');
         } catch (err) {
-            alert('Failed to import JSON: ' + err.message);
-        } finally {
-            document.getElementById('importFile').value = '';
+            alert("Error parsing JSON file.");
         }
     };
     reader.readAsText(file);
