@@ -2,26 +2,26 @@
   "eventConfig": {
     "eventName": "Welsh Road Rally 2026",
     "controls": [
-      { "id": "MTC1", "name": "MTC1 Start (Target 22:00)", "type": "TC", "targetTime": "22:00:00", "scrubbed": false },
+      { "id": "MTC1", "name": "MTC1 Start", "type": "TC", "targetTime": "22:00:00", "scrubbed": false },
       { "id": "PC1", "name": "PC1 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC1", "name": "TC1 Standard Control (Target 22:08)", "type": "TC", "targetTime": "22:08:00", "scrubbed": false },
+      { "id": "TC1", "name": "TC1 Standard Control", "type": "TC", "targetTime": "22:08:00", "scrubbed": false },
       { "id": "PC2", "name": "PC2 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC2", "name": "TC2 Standard Control (Target 22:18)", "type": "TC", "targetTime": "22:18:00", "scrubbed": false },
+      { "id": "TC2", "name": "TC2 Standard Control", "type": "TC", "targetTime": "22:18:00", "scrubbed": false },
       { "id": "PC3", "name": "PC3 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC3", "name": "TC3 Petrol Halt (Target 22:30)", "type": "TC", "targetTime": "22:30:00", "scrubbed": false },
+      { "id": "TC3", "name": "TC3 Petrol Halt", "type": "TC", "targetTime": "22:30:00", "scrubbed": false },
       { "id": "PC4", "name": "PC4 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC4", "name": "TC4 Standard Control (Target 22:42)", "type": "TC", "targetTime": "22:42:00", "scrubbed": false },
+      { "id": "TC4", "name": "TC4 Standard Control", "type": "TC", "targetTime": "22:42:00", "scrubbed": false },
       { "id": "PC5", "name": "PC5 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC5", "name": "TC5 Standard Control (Target 22:55)", "type": "TC", "targetTime": "22:55:00", "scrubbed": false },
+      { "id": "TC5", "name": "TC5 Standard Control", "type": "TC", "targetTime": "22:55:00", "scrubbed": false },
       { "id": "PC6", "name": "PC6 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC6", "name": "TC6 Standard Control (Target 23:08)", "type": "TC", "targetTime": "23:08:00", "scrubbed": false },
+      { "id": "TC6", "name": "TC6 Standard Control", "type": "TC", "targetTime": "23:08:00", "scrubbed": false },
       { "id": "PC7", "name": "PC7 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC7", "name": "TC7 Neutral End (Target 23:20)", "type": "TC", "targetTime": "23:20:00", "scrubbed": false },
+      { "id": "TC7", "name": "TC7 Neutral End", "type": "TC", "targetTime": "23:20:00", "scrubbed": false },
       { "id": "PC8", "name": "PC8 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "TC8", "name": "TC8 Standard Control (Target 23:35)", "type": "TC", "targetTime": "23:35:00", "scrubbed": false },
+      { "id": "TC8", "name": "TC8 Standard Control", "type": "TC", "targetTime": "23:35:00", "scrubbed": false },
       { "id": "PC9", "name": "PC9 Route Check", "type": "PC", "scrubbed": false },
       { "id": "PC10", "name": "PC10 Route Check", "type": "PC", "scrubbed": false },
-      { "id": "MTC2", "name": "MTC2 Finish (Target 23:50)", "type": "TC", "targetTime": "23:50:00", "scrubbed": false }
+      { "id": "MTC2", "name": "MTC2 Finish", "type": "TC", "targetTime": "23:50:00", "scrubbed": false }
     ]
   },
   "rallyData": [
