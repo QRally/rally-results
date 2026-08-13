@@ -1,6 +1,6 @@
 {
   "eventConfig": {
-    "eventName": "Road Rally Service",
+    "eventName": "Road Rally",
     "controls": [
       { "id": "MTC1", "name": "MTC1 Start", "type": "TC", "targetTime": "22:00:00", "scrubbed": false },
       { "id": "PC1", "name": "PC1 Route Check", "type": "PC", "scrubbed": false },
